@@ -1,22 +1,20 @@
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use std::thread;
-use std::io::Read;
-use std::io::Write;
 
-fn handle_client(mut stream: TcpStream) {
+async fn handle_client(mut stream: TcpStream) {
     // read 20 bytes at a time from stream echoing back to stream
     loop {
         let mut read = [0; 1028];
-        match stream.read(&mut read) {
+        match stream.read(&mut read).await {
             Ok(n) => {
-                if n == 0 { 
+                if n == 0 {
                     // connection was closed
                     break;
                 }
-                stream.write(&read[0..n]).unwrap();
+                stream.write(&read[0..n]).await.unwrap();
             }
             Err(err) => {
-                panic!(err);
+                panic!("{err}");
             }
         }
     }
@@ -26,16 +24,10 @@ fn handle_client(mut stream: TcpStream) {
 async fn main() {
     let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                thread::spawn(move || {
-                    handle_client(stream);
-                });
-            }
-            Err(_) => {
-                println!("Error");
-            }
-        }
+    loop {
+        let (stream, _addr) = listener.accept().await.unwrap();
+        tokio::spawn(async move {
+            handle_client(stream).await;
+        });
     }
 }
