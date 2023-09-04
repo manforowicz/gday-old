@@ -1,3 +1,5 @@
+use std::net::{SocketAddrV4, SocketAddrV6};
+
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -30,4 +32,12 @@ async fn main() {
             handle_client(stream).await;
         });
     }
+}
+
+struct ClientInfo {
+    id: u32,
+    private_addr_v4: Option<SocketAddrV4>,
+    public_addr_v4: Option<SocketAddrV4>,
+    private_addr_v6: Option<SocketAddrV6>,
+    public_addr_v6: Option<SocketAddrV6>,
 }
