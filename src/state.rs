@@ -3,10 +3,20 @@ use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
 use std::sync::Mutex;
 
-#[derive(Default)]
+#[derive(PartialEq)]
+enum ClientStatus {
+    Sending,
+    Waiting(fn(Vec<ContactInfo>)),
+}
+
 struct Client {
     password: Vec<u8>,
-    done_sending: bool,
+    status: ClientStatus,
+    contact_info: ContactInfo,
+}
+
+#[derive(Default)]
+pub struct ContactInfo {
     private_v6: Option<SocketAddrV6>,
     private_v4: Option<SocketAddrV4>,
     public_v6: Option<SocketAddrV6>,
@@ -23,18 +33,21 @@ pub struct State {
 }
 
 impl State {
+    pub fn room_exists(&self, password: &[u8]) -> bool {
+        let rooms = self.rooms.lock().unwrap();
+        rooms.contains_key(password)
+    }
+
     /// Adds a client and returns their new id
-    pub fn add_client(&mut self, password: &[u8]) -> Result<u64, ()> {
+    pub fn add_client(&mut self, password: &[u8]) -> u64 {
         let mut rooms = self.rooms.lock().unwrap();
         let mut clients = self.clients.lock().unwrap();
         let mut clients_served = self.clients_served.lock().unwrap();
 
-        if rooms.contains_key(password) {
-            return Err(());
-        }
         let client = Client {
             password: password.to_vec(),
-            ..Default::default()
+            status: ClientStatus::Sending,
+            contact_info: ContactInfo::default(),
         };
 
         *clients_served = clients_served.wrapping_add(1);
@@ -43,24 +56,42 @@ impl State {
         rooms.insert(password.to_vec(), vec![id]);
         clients.insert(id, client);
 
-        Ok(id)
+        id
     }
 
     pub fn update_client(&mut self, client_id: u64, addr: SocketAddr, public: bool) {
         let mut clients = self.clients.lock().unwrap();
         let client = clients.get_mut(&client_id).unwrap();
 
-        match (addr, public) {
-            (SocketAddr::V6(addr), false) => client.private_v6 = Some(addr),
-            (SocketAddr::V4(addr), false) => client.private_v4 = Some(addr),
-            (SocketAddr::V6(addr), true) => client.public_v6 = Some(addr),
-            (SocketAddr::V4(addr), true) => client.public_v4 = Some(addr),
+        match addr {
+            SocketAddr::V6(addr) => {
+                if public {
+                    client.contact_info.public_v6 = Some(addr);
+                } else {
+                    client.contact_info.private_v6 = Some(addr);
+                }
+            }
+            SocketAddr::V4(addr) => {
+                if public {
+                    client.contact_info.public_v4 = Some(addr);
+                } else {
+                    client.contact_info.private_v4 = Some(addr);
+                }
+            }
         }
     }
 
-    pub fn set_client_done(&mut self, client_id: u64) {
+    pub fn set_client_done(&mut self, client_id: u64, callback: fn(Vec<ContactInfo>)) {
         let mut clients = self.clients.lock().unwrap();
+        let mut rooms = self.rooms.lock().unwrap();
         let client = clients.get_mut(&client_id).unwrap();
-        client.done_sending = true;
+        client.status = ClientStatus::Waiting(callback);
+
+        let client_ids = &rooms[&client.password];
+
+        if client_ids
+            .iter()
+            .all(|id| matches!(clients[id].status, ClientStatus::Waiting(_)))
+        {}
     }
 }
