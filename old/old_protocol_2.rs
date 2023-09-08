@@ -3,6 +3,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6}, fmt,
 };
 
+#[derive(PartialEq, Debug, Clone)]
 pub enum ClientMessage {
     /// Code 1
     CreateRoom,
@@ -10,7 +11,6 @@ pub enum ClientMessage {
     JoinRoom([u8; 9]),
     /// Code 5
     SendContact(u64, Contact, bool),
-    
 }
 
 impl From<ClientMessage> for Vec<u8> {
@@ -99,6 +99,7 @@ impl TryFrom<&[u8]> for ClientMessage {
     }
 }
 
+#[derive(PartialEq, Clone, Debug)]
 pub enum ServerMessage {
     /// Code 2
     RoomCreated([u8; 9]),
@@ -219,13 +220,13 @@ impl TryFrom<&[u8]> for ServerMessage {
     }
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, PartialEq)]
 pub struct Contact {
     pub v6: Option<SocketAddrV6>,
     pub v4: Option<SocketAddrV4>,
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, PartialEq)]
 pub struct FullContact {
     pub private: Contact,
     pub public: Contact,
@@ -313,4 +314,99 @@ fn msg_to_addr_v4(msg: &[u8; 16]) -> SocketAddrV4 {
     let ip = bytes_to_int!(msg[0..4], u32);
     let port = bytes_to_int!(msg[4..6], u16);
     SocketAddrV4::new(Ipv4Addr::from(ip), port)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::net::Ipv4Addr;
+    use std::net::SocketAddrV4;
+
+    use crate::protocol::FullContact;
+    use crate::protocol::ServerMessage;
+
+    use super::Contact;
+
+    use super::ClientMessage;
+
+    #[test]
+    fn client_message_create_room() {
+        let msg1 = ClientMessage::CreateRoom;
+        let msg2 = ClientMessage::try_from(&Vec::from(msg1.clone())[2..]).unwrap();
+        assert_eq!(msg1, msg2);
+    }
+
+    #[test]
+    fn client_message_join_room() {
+        let msg1 = ClientMessage::JoinRoom([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        let msg2 = ClientMessage::try_from(&Vec::from(msg1.clone())[2..]).unwrap();
+        assert_eq!(msg1, msg2);
+    }
+
+    #[test]
+    fn client_message_send_contact() {
+        let contact = Contact {
+            v4: Some(SocketAddrV4::new(Ipv4Addr::new(4, 4, 3, 23), 4353)),
+            v6: None,
+        };
+        let msg1 = ClientMessage::SendContact(3546, contact, true);
+        let msg2 = ClientMessage::try_from(&Vec::from(msg1.clone())[2..]).unwrap();
+        assert_eq!(msg1, msg2);
+    }
+
+    #[test]
+    fn server_message_room_created() {
+        let msg1 = ServerMessage::RoomCreated([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        let msg2 = ServerMessage::try_from(&Vec::from(msg1.clone())[2..]).unwrap();
+        assert_eq!(msg1, msg2);
+    }
+
+    #[test]
+    fn server_message_room_joined() {
+        let msg1 = ServerMessage::RoomJoined(3546);
+        let msg2 = ServerMessage::try_from(&Vec::from(msg1.clone())[2..]).unwrap();
+        assert_eq!(msg1, msg2);
+    }
+
+    #[test]
+    fn server_message_share_peer_contacts() {
+        let c1 = FullContact{
+            private: Contact {
+                v4: Some("3.24.24.25:324".parse().unwrap()),
+                v6: None,
+            },
+            public: Contact {
+                v4: None,
+                v6: Some("[2001:db8::1]:8080".parse().unwrap()),
+            },
+        };
+
+        let c2 = FullContact {
+            private: Contact {
+                v6: None,
+                v4: None,
+            },
+            public: Contact {
+                v6: None,
+                v4: None,
+            }
+        };
+
+        let msg1 = ServerMessage::SharePeerContacts(vec![c1, c2]);
+        let msg2 = ServerMessage::try_from(&Vec::from(msg1.clone())[2..]).unwrap();
+        assert_eq!(msg1, msg2);
+    }
+
+
+    #[test]
+    fn server_message_errors() {
+
+        let errors = [ServerMessage::NoSuchClientIDError, ServerMessage::NoSuchRoomError, ServerMessage::SyntaxError];
+        for msg1 in errors {
+            let msg2 = ServerMessage::try_from(&Vec::from(msg1.clone())[2..]).unwrap();
+            assert_eq!(msg1, msg2);
+        }
+
+    }
+
 }
