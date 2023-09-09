@@ -1,8 +1,8 @@
 #![warn(clippy::all, clippy::pedantic)]
-#![allow(dead_code)]
+#![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
 
 use std::{
-    net::{SocketAddr, SocketAddrV6},
+    net::SocketAddr,
     num::TryFromIntError,
 };
 
