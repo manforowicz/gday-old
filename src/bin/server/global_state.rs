@@ -1,8 +1,9 @@
+use holepunch::FullContact;
 use rand::seq::SliceRandom;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
-use holepunch::protocol::{Endpoint, FullContact};
 
 #[derive(Default)]
 struct Client {
@@ -28,7 +29,6 @@ fn generate_password() -> [u8; 6] {
 }
 
 impl State {
-
     pub fn room_exists(&self, password: &[u8; 6]) -> bool {
         let rooms = self.rooms.lock().unwrap();
         rooms.contains_key(password)
@@ -47,12 +47,11 @@ impl State {
         password
     }
 
-
     pub fn update_client(
         &mut self,
         password: &[u8; 6],
         is_creator: bool,
-        endpoint: &Endpoint,
+        endpoint: SocketAddr,
         public: bool,
     ) {
         let mut rooms = self.rooms.lock().unwrap();
@@ -66,11 +65,11 @@ impl State {
         };
 
         match endpoint {
-            Endpoint::V6(ip, port) => {
-                client_info.v6 = Some((*ip, *port));
+            SocketAddr::V6(addr) => {
+                client_info.v6 = Some(addr);
             }
-            Endpoint::V4(ip, port) => {
-                client_info.v4 = Some((*ip, *port));
+            SocketAddr::V4(addr) => {
+                client_info.v4 = Some(addr);
             }
         }
     }
@@ -93,7 +92,7 @@ impl State {
 
         if peer.waiting.is_some() {
             let client_info = room[is_creator as usize].contact.clone();
-            let peer_info = room[!is_creator as usize].contact.clone();
+            let peer_info = peer.contact.clone();
 
             let client = &mut room[is_creator as usize];
             client.waiting.take().unwrap().send(peer_info).unwrap();

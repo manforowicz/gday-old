@@ -1,23 +1,22 @@
-
-
 use std::net::SocketAddr;
-
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
 use crate::global_state::State;
-use holepunch::protocol::{ClientMessage, ServerMessage};
-use holepunch::{deserialize_from, serialize_into, endpoint_from_addr};
+use holepunch::{deserialize_from, serialize_into, ClientMessage, ServerMessage};
 
 pub struct ConnectionHandler<T: AsyncReadExt + AsyncWriteExt + Unpin> {
     state: State,
     stream: T,
-    client_addr: SocketAddr
+    client_addr: SocketAddr,
 }
 
 impl<T: AsyncReadExt + AsyncWriteExt + Unpin> ConnectionHandler<T> {
     pub async fn start(state: State, stream: T, client_addr: SocketAddr) {
-        let mut this = ConnectionHandler { state, stream, client_addr };
+        let mut this = ConnectionHandler {
+            state,
+            stream,
+            client_addr,
+        };
         while Self::handle_message(&mut this).await.is_ok() {}
     }
 
@@ -35,11 +34,17 @@ impl<T: AsyncReadExt + AsyncWriteExt + Unpin> ConnectionHandler<T> {
                     return Err(Error::NoSuchPassword);
                 }
 
-                self.state.update_client(&password, is_creator, &endpoint_from_addr(self.client_addr), true);
-                self.state.update_client(&password, is_creator, &contact, false);
-                    
+                self.state
+                    .update_client(&password, is_creator, self.client_addr, true);
+                self.state
+                    .update_client(&password, is_creator, contact, false);
+
                 if is_done {
-                    let contact = self.state.set_client_done(&password, is_creator).await.unwrap();
+                    let contact = self
+                        .state
+                        .set_client_done(&password, is_creator)
+                        .await
+                        .unwrap();
                     self.send(ServerMessage::SharePeerContacts(contact)).await?;
                 }
             }
@@ -57,11 +62,10 @@ impl<T: AsyncReadExt + AsyncWriteExt + Unpin> ConnectionHandler<T> {
     }
 }
 
-
 #[derive(Debug, Error)]
 enum Error {
     #[error("Client sent password that doesn't correspond to any room")]
     NoSuchPassword,
     #[error("{0}")]
-    ProtocolError(#[from] holepunch::Error)
+    ProtocolError(#[from] holepunch::Error),
 }
