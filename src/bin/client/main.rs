@@ -79,5 +79,5 @@ async fn main() {
 
     println!("Successfully established encrypted connection with peer.");
 
-    chat::Chat::begin(connection.stream, connection.shared_key);
+    chat::Chat::begin(connection.stream, connection.shared_key).await;
 }
