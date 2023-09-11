@@ -23,7 +23,7 @@ const SERVER: ServerAddr = ServerAddr {
         0,
         0,
     ),
-    v4: SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 49870),
+    v4: SocketAddrV4::new(Ipv4Addr::new(146, 235, 206, 20), 49870),
     name: "psend",
 };
 
