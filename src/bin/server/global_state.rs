@@ -14,13 +14,13 @@ struct Client {
 #[derive(Clone, Default)]
 pub struct State {
     /// Maps room password to clients
-    rooms: Arc<Mutex<HashMap<[u8; 6], [Client; 2]>>>,
+    rooms: Arc<Mutex<HashMap<[u8; 9], [Client; 2]>>>,
 }
 
-fn generate_password() -> [u8; 6] {
+fn generate_password() -> [u8; 9] {
     let mut rng = rand::thread_rng();
     let characters = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let mut password = [0; 6];
+    let mut password = [0; 9];
     for letter in &mut password {
         *letter = *characters.choose(&mut rng).unwrap();
     }
@@ -29,12 +29,12 @@ fn generate_password() -> [u8; 6] {
 }
 
 impl State {
-    pub fn room_exists(&self, password: &[u8; 6]) -> bool {
+    pub fn room_exists(&self, password: [u8; 9]) -> bool {
         let rooms = self.rooms.lock().unwrap();
-        rooms.contains_key(password)
+        rooms.contains_key(&password)
     }
 
-    pub fn create_room(&mut self) -> [u8; 6] {
+    pub fn create_room(&mut self) -> [u8; 9] {
         let mut rooms = self.rooms.lock().unwrap();
 
         let mut password = generate_password();
@@ -49,14 +49,14 @@ impl State {
 
     pub fn update_client(
         &mut self,
-        password: &[u8; 6],
+        password: [u8; 9],
         is_creator: bool,
         endpoint: SocketAddr,
         public: bool,
     ) {
         let mut rooms = self.rooms.lock().unwrap();
-        let room = rooms.get_mut(password).unwrap();
-        let client = &mut room[is_creator as usize];
+        let room = rooms.get_mut(&password).unwrap();
+        let client = &mut room[usize::from(is_creator)];
 
         let client_info = if public {
             &mut client.contact.public
@@ -77,27 +77,30 @@ impl State {
     /// Assumes that client id exists
     pub fn set_client_done(
         &mut self,
-        password: &[u8; 6],
+        password: [u8; 9],
         is_creator: bool,
     ) -> oneshot::Receiver<FullContact> {
         let mut rooms = self.rooms.lock().unwrap();
-        let room = rooms.get_mut(password).unwrap();
+        let room = rooms.get_mut(&password).unwrap();
 
-        let client = &mut room[is_creator as usize];
+        let client_i = usize::from(is_creator);
+        let peer_i = !client_i;
+
+        let client = &mut room[client_i];
 
         let (tx, rx) = oneshot::channel();
         client.waiting = Some(tx);
 
-        let peer = &room[!is_creator as usize];
+        let peer = &room[!usize::from(is_creator)];
 
         if peer.waiting.is_some() {
-            let client_info = room[is_creator as usize].contact.clone();
+            let client_info = room[client_i].contact.clone();
             let peer_info = peer.contact.clone();
 
-            let client = &mut room[is_creator as usize];
+            let client = &mut room[client_i];
             client.waiting.take().unwrap().send(peer_info).unwrap();
 
-            let peer = &mut room[!is_creator as usize];
+            let peer = &mut room[peer_i];
             peer.waiting.take().unwrap().send(client_info).unwrap();
         }
 

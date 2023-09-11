@@ -13,7 +13,7 @@ pub enum Error {
     #[error("Error with encoding/decoding message: {0}")]
     Postcard(#[from] postcard::Error),
 
-    #[error("Message is longer than max of {} bytes", u16::MAX)]
+    #[error("Message cannot be longer than max of {} bytes", u8::MAX)]
     MessageTooLong(#[from] TryFromIntError),
 
     #[error("IO Error: {0}")]
@@ -25,14 +25,14 @@ pub enum ClientMessage {
     /// Request the server to create a room
     CreateRoom,
     /// (password, user is creator of room?, private contact, done sending all info)
-    SendContact([u8; 6], bool, SocketAddr, bool),
+    SendContact([u8; 9], bool, Option<SocketAddr>, bool),
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub enum ServerMessage {
     /// Room successfully created
     /// (room_password, user_id)
-    RoomCreated([u8; 6]),
+    RoomCreated([u8; 9]),
     /// (full contact info of peer)
     SharePeerContacts(FullContact),
     SyntaxError,
@@ -54,7 +54,7 @@ pub struct FullContact {
 pub async fn deserialize_from<T: AsyncReadExt + Unpin, U: DeserializeOwned>(
     stream: &mut T,
 ) -> Result<U, Error> {
-    let length = stream.read_u16().await? as usize;
+    let length = stream.read_u8().await? as usize;
     let mut buf = vec![0; length];
     stream.read_exact(&mut buf).await?;
     Ok(from_bytes(&buf)?)
@@ -65,6 +65,6 @@ pub async fn serialize_into<T: AsyncWriteExt + Unpin, U: Serialize>(
     msg: &U,
 ) -> Result<(), Error> {
     let msg = to_stdvec(msg)?;
-    let length = u16::try_from(msg.len())?.to_be_bytes();
+    let length = u8::try_from(msg.len())?.to_be_bytes();
     Ok(stream.write_all(&[&length[..], &msg[..]].concat()).await?)
 }

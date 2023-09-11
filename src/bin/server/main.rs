@@ -1,3 +1,5 @@
+#![warn(clippy::all, clippy::pedantic)]
+
 mod connection_handler;
 mod global_state;
 
@@ -14,6 +16,7 @@ use clap::Parser;
 
 use std::fs;
 use std::path::PathBuf;
+use std::process::exit;
 
 
 /// Run a TODO server
@@ -53,12 +56,12 @@ fn get_tls_acceptor() -> tokio_rustls::TlsAcceptor {
 
     let key_file = fs::read(&cli.key).unwrap_or_else(|err| {
         eprintln!("Couldn't open key '{}': {}", cli.key.display(), err);
-        std::process::exit(1)
+        exit(1)
     });
 
     let cert_file = fs::read(&cli.certificate).unwrap_or_else(|err| {
         eprintln!("Couldn't open certificate '{}': {}", cli.certificate.display(), err);
-        std::process::exit(1)
+        exit(1)
     });
 
     let key = rustls::PrivateKey(key_file);
@@ -70,5 +73,8 @@ fn get_tls_acceptor() -> tokio_rustls::TlsAcceptor {
         .with_single_cert(vec![cert], key)
         .unwrap();
 
-    tokio_rustls::TlsAcceptor::from(Arc::new(tls_config))
+    tokio_rustls::TlsAcceptor::try_from(Arc::new(tls_config)).unwrap_or_else(|err| {
+        eprintln!("Error making TLS Acceptor: {err}");
+        exit(1);
+    })
 }

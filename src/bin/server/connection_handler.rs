@@ -1,17 +1,18 @@
 use std::net::SocketAddr;
 use thiserror::Error;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio_rustls::server::TlsStream;
 use crate::global_state::State;
 use holepunch::{deserialize_from, serialize_into, ClientMessage, ServerMessage};
 
-pub struct ConnectionHandler<T: AsyncReadExt + AsyncWriteExt + Unpin> {
+pub struct ConnectionHandler {
     state: State,
-    stream: T,
+    stream: TlsStream<TcpStream>,
     client_addr: SocketAddr,
 }
 
-impl<T: AsyncReadExt + AsyncWriteExt + Unpin> ConnectionHandler<T> {
-    pub async fn start(state: State, stream: T, client_addr: SocketAddr) {
+impl ConnectionHandler {
+    pub async fn start(state: State, stream: TlsStream<TcpStream>, client_addr: SocketAddr) {
         let mut this = ConnectionHandler {
             state,
             stream,
@@ -29,20 +30,23 @@ impl<T: AsyncReadExt + AsyncWriteExt + Unpin> ConnectionHandler<T> {
                 self.send(ServerMessage::RoomCreated(password)).await?;
             }
             Ok(ClientMessage::SendContact(password, is_creator, contact, is_done)) => {
-                if !self.state.room_exists(&password) {
+                if !self.state.room_exists(password) {
                     self.send(ServerMessage::NoSuchRoomPasswordError).await?;
                     return Err(Error::NoSuchPassword);
                 }
 
                 self.state
-                    .update_client(&password, is_creator, self.client_addr, true);
-                self.state
-                    .update_client(&password, is_creator, contact, false);
+                    .update_client(password, is_creator, self.client_addr, true);
+
+                if let Some(contact) = contact {
+                    self.state
+                        .update_client(password, is_creator, contact, false);
+                }
 
                 if is_done {
                     let contact = self
                         .state
-                        .set_client_done(&password, is_creator)
+                        .set_client_done(password, is_creator)
                         .await
                         .unwrap();
                     self.send(ServerMessage::SharePeerContacts(contact)).await?;
@@ -50,7 +54,7 @@ impl<T: AsyncReadExt + AsyncWriteExt + Unpin> ConnectionHandler<T> {
             }
             Err(err) => {
                 self.send(ServerMessage::SyntaxError).await?;
-                Err(err)?
+                Err(err)?;
             }
         };
 
