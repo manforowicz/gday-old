@@ -19,8 +19,8 @@ impl Chat {
         let handle1 = tokio::spawn(listen(read, key));
         let handle2 = tokio::spawn(talk(write, key));
         
-        handle1.await.unwrap().unwrap();
-        handle2.await.unwrap().unwrap();
+        let x = handle1.await.unwrap().unwrap();
+        let y = handle2.await.unwrap().unwrap();
     }
 
 
