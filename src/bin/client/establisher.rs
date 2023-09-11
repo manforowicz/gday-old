@@ -25,6 +25,8 @@ pub enum Error {
     InvalidServerReply(holepunch::ServerMessage),
     #[error("Couldn't connect to peer")]
     PeerConnectFailed,
+    #[error("Password authenticated key exchange failed: {0}")]
+    SpakeFailed(#[from] spake2::Error),
 }
 
 pub struct Establisher {
@@ -162,7 +164,7 @@ impl Establisher {
     async fn verify_peer(
         password: [u8; 9],
         mut stream: TcpStream,
-    ) -> Result<PeerConnection, std::io::Error> {
+    ) -> Result<PeerConnection, Error> {
         let (s, outbound_msg) = Spake2::<Ed25519Group>::start_symmetric(
             &Password::new(password),
             &Identity::new(b"psend peer"),
@@ -173,7 +175,7 @@ impl Establisher {
         let mut inbound_message = [0; 33];
         stream.read_exact(&mut inbound_message).await?;
 
-        let shared_key = s.finish(&inbound_message).unwrap();
+        let shared_key = s.finish(&inbound_message)?;
 
         Ok(PeerConnection::new(stream, shared_key.try_into().unwrap()))
     }

@@ -59,9 +59,12 @@ pub async fn write<T: AsyncWriteExt + Unpin>(stream: &mut T, msg: &[u8], key: [u
 }
 
 pub async fn read<T: AsyncReadExt + Unpin>(stream: &mut T, key: [u8; 32]) -> Result<Vec<u8>, Error> {
+    println!("READ START");
     let mut length = [0; 4];
     stream.read_exact(&mut length).await?;
     let length = u32::from_be_bytes(length);
+
+    println!("READ LENGHT!!! WOHO");
 
     let mut nonce = [0; 24];
     stream.read_exact(&mut nonce).await?;
