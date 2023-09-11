@@ -14,5 +14,5 @@ rand = "0.8.5"
 serde = "1.0.188"
 spake2 = "0.4.0"
 thiserror = "1.0.48"
-tokio = { version = "1.32.0", features = ["net", "macros", "rt-multi-thread", "io-util", "sync"] }
+tokio = { version = "1.32.0", features = ["net", "macros", "rt-multi-thread", "io-util", "sync", "io-std"] }
 tokio-rustls = "0.24.1"

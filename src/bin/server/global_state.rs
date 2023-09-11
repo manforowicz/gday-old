@@ -84,14 +84,14 @@ impl State {
         let room = rooms.get_mut(&password).unwrap();
 
         let client_i = usize::from(is_creator);
-        let peer_i = !client_i;
+        let peer_i = usize::from(!is_creator);
 
         let client = &mut room[client_i];
 
         let (tx, rx) = oneshot::channel();
         client.waiting = Some(tx);
 
-        let peer = &room[!usize::from(is_creator)];
+        let peer = &room[peer_i];
 
         if peer.waiting.is_some() {
             let client_info = room[client_i].contact.clone();
