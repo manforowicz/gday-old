@@ -2,8 +2,4 @@ debug/
 target/
 Cargo.lock
 
-*.der
-*.key
-*.crt
-*.pem
-*.csr
+*.key*
