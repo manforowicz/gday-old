@@ -13,12 +13,14 @@ pub struct Chat {
 }
 
 impl Chat {
-    pub fn begin(stream: TcpStream, key: [u8; 32]) {
+    pub async fn begin(stream: TcpStream, key: [u8; 32]) {
         let (read, write) = stream.into_split();
 
-        tokio::spawn(listen(read, key));
-        tokio::spawn(talk(write, key));
+        let handle1 = tokio::spawn(listen(read, key));
+        let handle2 = tokio::spawn(talk(write, key));
         
+        handle1.await.unwrap().unwrap();
+        handle2.await.unwrap().unwrap();
     }
 
 
