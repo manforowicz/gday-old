@@ -25,18 +25,18 @@ pub enum ClientMessage {
     /// Request the server to create a room
     CreateRoom,
     /// (password, user is creator of room?, private contact, done sending all info)
-    SendContact([u8; 9], bool, Option<SocketAddr>, bool),
+    SendContact([u8; 6], bool, Option<SocketAddr>, bool),
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub enum ServerMessage {
     /// Room successfully created
     /// (room_password, user_id)
-    RoomCreated([u8; 9]),
+    RoomCreated([u8; 6]),
     /// (full contact info of peer)
     SharePeerContacts(FullContact),
     SyntaxError,
-    NoSuchRoomPasswordError,
+    ErrorNoSuchRoomID,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
@@ -47,8 +47,10 @@ pub struct Contact {
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
 pub struct FullContact {
-    pub private: Contact,
-    pub public: Contact,
+    pub private_v6: Option<SocketAddrV6>,
+    pub public_v6: Option<SocketAddrV6>,
+    pub private_v4: Option<SocketAddrV4>,
+    pub public_v4: Option<SocketAddrV4>,
 }
 
 pub async fn deserialize_from<T: AsyncReadExt + Unpin, U: DeserializeOwned>(

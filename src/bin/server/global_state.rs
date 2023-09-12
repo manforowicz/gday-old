@@ -3,6 +3,8 @@ use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use thiserror::Error;
 use tokio::sync::oneshot;
 
 #[derive(Default)]
@@ -13,75 +15,82 @@ struct Client {
 
 #[derive(Clone, Default)]
 pub struct State {
-    /// Maps room password to clients
-    rooms: Arc<Mutex<HashMap<[u8; 9], [Client; 2]>>>,
+    /// Maps room_id to clients
+    rooms: Arc<Mutex<HashMap<[u8; 6], [Client; 2]>>>,
 }
 
-fn generate_password() -> [u8; 9] {
+#[derive(Error, Debug)]
+#[error("There is no room with this room_id")]
+pub struct NoSuchRoomExists;
+
+fn generate_room_id() -> [u8; 6] {
     let mut rng = rand::thread_rng();
     let characters = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let mut password = [0; 9];
-    for letter in &mut password {
+    let mut id = [0; 6];
+    for letter in &mut id {
         *letter = *characters.choose(&mut rng).unwrap();
     }
 
-    password
+    id
 }
 
 impl State {
-    pub fn room_exists(&self, password: [u8; 9]) -> bool {
-        let rooms = self.rooms.lock().unwrap();
-        rooms.contains_key(&password)
-    }
-
-    pub fn create_room(&mut self) -> [u8; 9] {
+    pub fn create_room(&mut self) -> [u8; 6] {
         let mut rooms = self.rooms.lock().unwrap();
 
-        let mut password = generate_password();
-        while rooms.contains_key(&password) {
-            password = generate_password();
+        let mut room_id = generate_room_id();
+        while rooms.contains_key(&room_id) {
+            room_id = generate_room_id();
         }
 
-        rooms.insert(password, [Client::default(), Client::default()]);
+        rooms.insert(room_id, [Client::default(), Client::default()]);
+        self.room_timeout(room_id);
 
-        password
+        room_id
     }
 
     pub fn update_client(
         &mut self,
-        password: [u8; 9],
+        room_id: [u8; 6],
         is_creator: bool,
         endpoint: SocketAddr,
         public: bool,
-    ) {
+    ) -> Result<(), NoSuchRoomExists> {
         let mut rooms = self.rooms.lock().unwrap();
-        let room = rooms.get_mut(&password).unwrap();
-        let client = &mut room[usize::from(is_creator)];
+        let room = rooms.get_mut(&room_id).ok_or(NoSuchRoomExists)?;
+        let contact = &mut room[usize::from(is_creator)].contact;
 
-        let client_info = if public {
-            &mut client.contact.public
+        if public {
+            match endpoint {
+                SocketAddr::V6(addr) => {
+                    contact.public_v6 = Some(addr);
+                }
+                SocketAddr::V4(addr) => {
+                    contact.public_v4 = Some(addr);
+                }
+            }
         } else {
-            &mut client.contact.private
+            match endpoint {
+                SocketAddr::V6(addr) => {
+                    contact.private_v6 = Some(addr);
+                }
+                SocketAddr::V4(addr) => {
+                    contact.private_v4 = Some(addr);
+                }
+            }
         };
 
-        match endpoint {
-            SocketAddr::V6(addr) => {
-                client_info.v6 = Some(addr);
-            }
-            SocketAddr::V4(addr) => {
-                client_info.v4 = Some(addr);
-            }
-        }
+        Ok(())
     }
 
     /// Assumes that client id exists
     pub fn set_client_done(
         &mut self,
-        password: [u8; 9],
+        room_id: [u8; 6],
         is_creator: bool,
-    ) -> oneshot::Receiver<FullContact> {
+    ) -> Result<oneshot::Receiver<FullContact>, NoSuchRoomExists> {
         let mut rooms = self.rooms.lock().unwrap();
-        let room = rooms.get_mut(&password).unwrap();
+        let room = rooms.get_mut(&room_id).ok_or(NoSuchRoomExists)?;
 
         let client_i = usize::from(is_creator);
         let peer_i = usize::from(!is_creator);
@@ -104,6 +113,15 @@ impl State {
             peer.waiting.take().unwrap().send(client_info).unwrap();
         }
 
-        rx
+        Ok(rx)
+    }
+
+    fn room_timeout(&self, room: [u8; 6]) {
+        let state = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(60 * 10)).await;
+            let mut rooms = state.rooms.lock().unwrap();
+            rooms.remove(&room);
+        });
     }
 }

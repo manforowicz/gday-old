@@ -1,9 +1,8 @@
-use std::net::SocketAddr;
-use thiserror::Error;
-use tokio::net::TcpStream;
-use tokio_rustls::server::TlsStream;
 use crate::global_state::State;
 use holepunch::{deserialize_from, serialize_into, ClientMessage, ServerMessage};
+use std::net::SocketAddr;
+use tokio::net::TcpStream;
+use tokio_rustls::server::TlsStream;
 
 pub struct ConnectionHandler {
     state: State,
@@ -21,35 +20,41 @@ impl ConnectionHandler {
         while Self::handle_message(&mut this).await.is_ok() {}
     }
 
-    async fn handle_message(&mut self) -> Result<(), Error> {
+    async fn handle_message(&mut self) -> Result<(), holepunch::Error> {
         let msg = deserialize_from(&mut self.stream).await;
 
         match msg {
             Ok(ClientMessage::CreateRoom) => {
-                let password = self.state.create_room();
-                self.send(ServerMessage::RoomCreated(password)).await?;
+                let room_id = self.state.create_room();
+                self.send(ServerMessage::RoomCreated(room_id)).await?;
             }
-            Ok(ClientMessage::SendContact(password, is_creator, contact, is_done)) => {
-                if !self.state.room_exists(password) {
-                    self.send(ServerMessage::NoSuchRoomPasswordError).await?;
-                    return Err(Error::NoSuchPassword);
+            Ok(ClientMessage::SendContact(room_id, is_creator, contact, is_done)) => {
+                if self
+                    .state
+                    .update_client(room_id, is_creator, self.client_addr, true)
+                    .is_err()
+                {
+                    self.send(ServerMessage::ErrorNoSuchRoomID).await?;
                 }
 
-                self.state
-                    .update_client(password, is_creator, self.client_addr, true);
-
                 if let Some(contact) = contact {
-                    self.state
-                        .update_client(password, is_creator, contact, false);
+                    if self
+                        .state
+                        .update_client(room_id, is_creator, contact, false)
+                        .is_err()
+                    {
+                        self.send(ServerMessage::ErrorNoSuchRoomID).await?;
+                    };
                 }
 
                 if is_done {
-                    let contact = self
-                        .state
-                        .set_client_done(password, is_creator)
-                        .await
-                        .unwrap();
-                    self.send(ServerMessage::SharePeerContacts(contact)).await?;
+                    if let Ok(rx) = self.state.set_client_done(room_id, is_creator) {
+                        let contact = rx.await.unwrap();
+                        self.send(ServerMessage::SharePeerContacts(contact)).await?;
+                    } else {
+                        self.send(ServerMessage::ErrorNoSuchRoomID).await?;
+                    };
+
                 }
             }
             Err(err) => {
@@ -66,10 +71,3 @@ impl ConnectionHandler {
     }
 }
 
-#[derive(Debug, Error)]
-enum Error {
-    #[error("Client sent password that doesn't correspond to any room")]
-    NoSuchPassword,
-    #[error("{0}")]
-    ProtocolError(#[from] holepunch::Error),
-}

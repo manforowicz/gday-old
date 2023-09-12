@@ -13,14 +13,15 @@ pub struct Chat {
 }
 
 impl Chat {
-    pub async fn begin(stream: TcpStream, key: [u8; 32]) {
+    pub async fn begin(stream: TcpStream, key: [u8; 32]) -> Result<(), peer_connection::Error> {
         let (read, write) = stream.into_split();
 
-        let handle1 = tokio::spawn(listen(read, key));
-        let handle2 = tokio::spawn(talk(write, key));
+
+        let talk = tokio::spawn(talk(write, key));
+        let listen = tokio::spawn(listen(read, key));
         
-        let x = handle1.await.unwrap().unwrap();
-        let y = handle2.await.unwrap().unwrap();
+        let _ = talk.await.unwrap();
+        listen.await.unwrap()
     }
 
 
@@ -41,6 +42,5 @@ async fn talk(mut write: OwnedWriteHalf, key: [u8; 32]) -> Result<(), peer_conne
         std::io::stdin().lock().read_line(&mut buf)?;
         peer_connection::write(&mut write, buf.as_bytes(), key).await?;
         buf.clear();
-        println!("MESSAGE SENT");
     }
 }

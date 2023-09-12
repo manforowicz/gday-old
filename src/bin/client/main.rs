@@ -79,5 +79,8 @@ async fn main() {
 
     println!("Successfully established encrypted connection with peer.");
 
-    chat::Chat::begin(connection.stream, connection.shared_key).await;
+    chat::Chat::begin(connection.stream, connection.shared_key).await.unwrap_or_else(|err| {
+        eprintln!("Peer disconnected: {err}");
+        exit(1)
+    });
 }
