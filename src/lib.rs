@@ -24,8 +24,11 @@ pub enum Error {
 pub enum ClientMessage {
     /// Request the server to create a room
     CreateRoom,
-    /// (password, user is creator of room?, private contact, done sending all info)
-    SendContact([u8; 6], bool, Option<SocketAddr>, bool),
+    /// (room_id, user is creator of room?, private contact)
+    SendContact([u8; 6], bool, Option<SocketAddr>),
+
+    /// (room_id, user is creator of room?)
+    DoneSending([u8; 6], bool)
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]

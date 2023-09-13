@@ -28,7 +28,7 @@ impl ConnectionHandler {
                 let room_id = self.state.create_room();
                 self.send(ServerMessage::RoomCreated(room_id)).await?;
             }
-            Ok(ClientMessage::SendContact(room_id, is_creator, contact, is_done)) => {
+            Ok(ClientMessage::SendContact(room_id, is_creator, contact)) => {
                 if self
                     .state
                     .update_client(room_id, is_creator, self.client_addr, true)
@@ -46,16 +46,14 @@ impl ConnectionHandler {
                         self.send(ServerMessage::ErrorNoSuchRoomID).await?;
                     };
                 }
-
-                if is_done {
-                    if let Ok(rx) = self.state.set_client_done(room_id, is_creator) {
-                        let contact = rx.await.unwrap();
-                        self.send(ServerMessage::SharePeerContacts(contact)).await?;
-                    } else {
-                        self.send(ServerMessage::ErrorNoSuchRoomID).await?;
-                    };
-
-                }
+            }
+            Ok(ClientMessage::DoneSending(room_id, is_creator)) => {
+                if let Ok(rx) = self.state.set_client_done(room_id, is_creator) {
+                    let contact = rx.await.unwrap();
+                    self.send(ServerMessage::SharePeerContacts(contact)).await?;
+                } else {
+                    self.send(ServerMessage::ErrorNoSuchRoomID).await?;
+                };
             }
             Err(err) => {
                 self.send(ServerMessage::SyntaxError).await?;
@@ -70,4 +68,3 @@ impl ConnectionHandler {
         serialize_into(&mut self.stream, &msg).await
     }
 }
-

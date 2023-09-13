@@ -1,20 +1,18 @@
-use std::net::SocketAddr;
-
+use crate::{
+    peer_connection::PeerConnection,
+    server_connection::{ServerAddr, ServerConnection},
+};
 use futures::stream::{FuturesUnordered, StreamExt};
 use holepunch::{deserialize_from, serialize_into, ClientMessage, FullContact, ServerMessage};
 use rand::seq::SliceRandom;
 use spake2::{Ed25519Group, Identity, Password, Spake2};
+use std::net::SocketAddr;
 use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpSocket, TcpStream},
 };
 use tokio_rustls::{self, client::TlsStream};
-
-use crate::{
-    peer_connection::PeerConnection,
-    server_connection::{ServerAddr, ServerConnection},
-};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -26,7 +24,9 @@ pub enum Error {
     InvalidServerReply(holepunch::ServerMessage),
     #[error("Couldn't connect to peer")]
     PeerConnectFailed,
-    #[error("Peer authentication failed: {0}. Double check the first 3 characters of your password!")]
+    #[error(
+        "Peer authentication failed: {0}. Double check the first 3 characters of your password!"
+    )]
     SpakeFailed(#[from] spake2::Error),
 }
 
@@ -117,7 +117,7 @@ impl Establisher {
             }
 
             if let Some(socket) = peer.public_v4 {
-                futs.push(tokio::spawn(Self::try_connect(addr,socket, p)));
+                futs.push(tokio::spawn(Self::try_connect(addr, socket, p)));
             }
         }
 
@@ -133,12 +133,15 @@ impl Establisher {
     async fn get_peer_contact(&mut self) -> Result<FullContact, Error> {
         let mut conns = self.connection.get_all_streams_with_sockets();
 
-        for i in 0..conns.len() {
-            let is_done = i == conns.len() - 1;
+        for conn in &mut conns {
             let msg =
-                ClientMessage::SendContact(self.room_id, self.creator, Some(conns[i].1), is_done);
-            serialize_into(conns[i].0, &msg).await?;
+                ClientMessage::SendContact(self.room_id, self.creator, Some(conn.1));
+            serialize_into(conn.0, &msg).await?;
         }
+
+        let msg = ClientMessage::DoneSending(self.room_id, self.creator);
+        serialize_into(conns[0].0, &msg).await?;
+
         println!("Waiting for peer...");
 
         let response: ServerMessage = deserialize_from(conns.last_mut().unwrap().0).await?;
@@ -182,7 +185,7 @@ impl Establisher {
     }
 
     async fn verify_peer(peer_id: [u8; 3], mut stream: TcpStream) -> Result<PeerConnection, Error> {
-        let (s, outbound_msg) = Spake2::<Ed25519Group>::start_symmetric(
+        let (spake, outbound_msg) = Spake2::<Ed25519Group>::start_symmetric(
             &Password::new(peer_id),
             &Identity::new(b"psend peer"),
         );
@@ -192,9 +195,9 @@ impl Establisher {
         let mut inbound_message = [0; 33];
         stream.read_exact(&mut inbound_message).await?;
 
-        let shared_key = s.finish(&inbound_message)?;
+        let shared_key = spake.finish(&inbound_message)?.try_into().unwrap();
 
-        Ok(PeerConnection::new(stream, shared_key.try_into().unwrap()))
+        Ok(PeerConnection { stream, shared_key })
     }
 
     fn get_local_socket(local_addr: SocketAddr) -> Result<TcpSocket, std::io::Error> {
