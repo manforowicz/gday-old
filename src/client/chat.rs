@@ -13,8 +13,9 @@ pub async fn start(peer_connection: PeerConnection) -> Result<(), Error> {
 
     let (reader, writer) = peer_connection.stream.into_split();
 
-    let reader = Reader::new(reader, peer_connection.shared_secret).await?;
     let writer = Writer::new(writer, peer_connection.shared_secret).await?;
+    let reader = Reader::new(reader, peer_connection.shared_secret).await?;
+    
 
     println!("foboodfsa");
 
