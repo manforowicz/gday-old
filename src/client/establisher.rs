@@ -90,6 +90,7 @@ impl Establisher {
         let (local_v6, local_v4) = self.connection.get_all_addr();
 
         let p = self.peer_id;
+        println!("peer id: {p:?}");
 
         let mut futs = FuturesUnordered::new();
 
@@ -116,7 +117,9 @@ impl Establisher {
             }
         }
 
+        println!("Hello?");
         while let Some(result) = futs.next().await {
+            print!("waiting on futures");
             if let Ok(Ok(connection)) = result {
                 return Ok(connection);
             }
