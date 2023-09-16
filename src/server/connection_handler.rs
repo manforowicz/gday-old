@@ -1,5 +1,6 @@
-use crate::global_state::State;
-use holepunch::{deserialize_from, serialize_into, ClientMessage, ServerMessage};
+use crate::server::global_state::State;
+use crate::protocol::{deserialize_from, serialize_into, ClientMessage, ServerMessage};
+use crate::Error;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio_rustls::server::TlsStream;
@@ -8,6 +9,7 @@ pub struct ConnectionHandler {
     state: State,
     stream: TlsStream<TcpStream>,
     client_addr: SocketAddr,
+    tmp_buf: [u8; 68]
 }
 
 impl ConnectionHandler {
@@ -16,12 +18,13 @@ impl ConnectionHandler {
             state,
             stream,
             client_addr,
+            tmp_buf: [0; 68]
         };
         while Self::handle_message(&mut this).await.is_ok() {}
     }
 
-    async fn handle_message(&mut self) -> Result<(), holepunch::Error> {
-        let msg = deserialize_from(&mut self.stream).await;
+    async fn handle_message(&mut self) -> Result<(), Error> {
+        let msg = deserialize_from(&mut self.stream, &mut self.tmp_buf).await;
 
         match msg {
             Ok(ClientMessage::CreateRoom) => {
@@ -64,7 +67,7 @@ impl ConnectionHandler {
         Ok(())
     }
 
-    async fn send(&mut self, msg: ServerMessage) -> Result<(), holepunch::Error> {
-        serialize_into(&mut self.stream, &msg).await
+    async fn send(&mut self, msg: ServerMessage) -> Result<(), Error> {
+        serialize_into(&mut self.stream, &msg, &mut self.tmp_buf).await
     }
 }

@@ -1,4 +1,4 @@
-use holepunch::FullContact;
+use crate::protocol::FullContact;
 use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::net::SocketAddr;

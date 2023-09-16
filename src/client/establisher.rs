@@ -1,51 +1,41 @@
-use crate::{
+use crate::client::{
     peer_connection::PeerConnection,
     server_connection::{ServerAddr, ServerConnection},
 };
 use futures::stream::{FuturesUnordered, StreamExt};
-use holepunch::{deserialize_from, serialize_into, ClientMessage, FullContact, ServerMessage};
+use crate::protocol::{deserialize_from, serialize_into, ClientMessage, FullContact, ServerMessage};
 use rand::seq::SliceRandom;
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 use std::net::SocketAddr;
-use thiserror::Error;
+use crate::Error;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpSocket, TcpStream},
 };
 use tokio_rustls::{self, client::TlsStream};
 
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("Holepunch Error: {0}")]
-    Holepunch(#[from] holepunch::Error),
-    #[error("IO Error: {0}")]
-    IO(#[from] std::io::Error),
-    #[error("Double check the first 6 characters of your password!")]
-    InvalidServerReply(holepunch::ServerMessage),
-    #[error("Couldn't connect to peer")]
-    PeerConnectFailed,
-    #[error(
-        "Peer authentication failed: {0}. Double check the first 3 characters of your password!"
-    )]
-    SpakeFailed(#[from] spake2::Error),
-}
+
 
 pub struct Establisher {
     room_id: [u8; 6],
     peer_id: [u8; 3],
     creator: bool,
     connection: ServerConnection,
+    tmp_buf: [u8; 68],
 }
 
 impl Establisher {
     pub async fn create_room(server_addr: ServerAddr) -> Result<Self, Error> {
         let mut connection = ServerConnection::new(server_addr).await?;
 
+        let mut tmp_buf = [0; 68];
+
         Ok(Self {
-            room_id: Self::request_room(connection.get_any_stream()).await?,
+            room_id: Self::request_room(connection.get_any_stream(), &mut tmp_buf).await?,
             peer_id: Self::generate_peer_id(),
             creator: true,
             connection,
+            tmp_buf,
         })
     }
 
@@ -60,9 +50,12 @@ impl Establisher {
         id
     }
 
-    async fn request_room(stream: &mut TlsStream<TcpStream>) -> Result<[u8; 6], Error> {
-        serialize_into(stream, &ClientMessage::CreateRoom).await?;
-        let response: ServerMessage = deserialize_from(stream).await?;
+    async fn request_room(
+        stream: &mut TlsStream<TcpStream>,
+        tmp_buf: &mut [u8],
+    ) -> Result<[u8; 6], Error> {
+        serialize_into(stream, &ClientMessage::CreateRoom, tmp_buf).await?;
+        let response: ServerMessage = deserialize_from(stream, tmp_buf).await?;
 
         if let ServerMessage::RoomCreated(room_id) = response {
             Ok(room_id)
@@ -79,6 +72,7 @@ impl Establisher {
             peer_id: password[6..9].try_into().unwrap(),
             creator: false,
             connection,
+            tmp_buf: [0; 68],
         })
     }
 
@@ -134,17 +128,17 @@ impl Establisher {
         let mut conns = self.connection.get_all_streams_with_sockets();
 
         for conn in &mut conns {
-            let msg =
-                ClientMessage::SendContact(self.room_id, self.creator, Some(conn.1));
-            serialize_into(conn.0, &msg).await?;
+            let msg = ClientMessage::SendContact(self.room_id, self.creator, Some(conn.1));
+            serialize_into(conn.0, &msg, &mut self.tmp_buf).await?;
         }
 
         let msg = ClientMessage::DoneSending(self.room_id, self.creator);
-        serialize_into(conns[0].0, &msg).await?;
+        serialize_into(conns[0].0, &msg, &mut self.tmp_buf).await?;
 
         println!("Waiting for peer...");
 
-        let response: ServerMessage = deserialize_from(conns.last_mut().unwrap().0).await?;
+        let response: ServerMessage =
+            deserialize_from(conns.last_mut().unwrap().0, &mut self.tmp_buf).await?;
 
         if let ServerMessage::SharePeerContacts(full_contact) = response {
             Ok(full_contact)

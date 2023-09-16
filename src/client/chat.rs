@@ -1,22 +1,16 @@
-use crate::peer_connection::{self, PeerConnection, PeerReader, PeerWriter};
+use crate::client::peer_connection::{self, FileMeta, PeerConnection};
+use crate::protocol::{deserialize_from, PeerMessage, serialize_into};
+use crate::Error;
 use owo_colors::OwoColorize;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::io::AsyncBufReadExt;
-use tokio::io;
+use tokio::io::{self, AsyncRead};
+use tokio::io::{AsyncBufReadExt, AsyncWrite};
 use tokio::sync::Mutex;
 
-enum Message {
-    Text(String),
-}
 
-struct FileMeta {
-    path: PathBuf,
-    size: u64,
-}
-
-pub async fn start(peer_connection: PeerConnection) -> Result<(), peer_connection::Error> {
+pub async fn start(peer_connection: PeerConnection) -> Result<(), Error> {
     let (reader, writer) = peer_connection.split();
 
     let handle1 = tokio::spawn(Receiver::start(reader));
@@ -28,40 +22,47 @@ pub async fn start(peer_connection: PeerConnection) -> Result<(), peer_connectio
     Ok(())
 }
 
-struct Receiver {
-    reader: PeerReader,
+struct Receiver<R: AsyncRead + Unpin> {
+    reader: R,
+    tmp_buf: [u8; 8000]
 }
 
-impl Receiver {
-    async fn start(reader: PeerReader) -> Result<(), peer_connection::Error> {
-        let mut this = Self { reader };
+impl<R: AsyncRead + Unpin> Receiver<R> {
+    async fn start(reader: R) -> Result<(), Error> {
+        let mut this = Self { reader , tmp_buf: [0; 8000]};
         this.run().await
     }
 
-    async fn run(&mut self) -> Result<(), peer_connection::Error> {
+    async fn run(&mut self) -> Result<(), Error> {
         loop {
-            let msg = self.reader.receive().await?;
-            let msg = String::from_utf8(msg)?;
+            let msg = deserialize_from(&mut self.reader, &mut self.tmp_buf).await?;
+            match msg {
+                PeerMessage::Text(text) => {
+                    println!("{}{}{}", "peer: ".purple(), text.purple(), "you".green());
+                    std::io::stdout().flush()?;
+                }
+                _ => ()
+            }
 
-            println!("{}{}{}", "peer: ".purple(), msg.purple(), "you".green());
-            std::io::stdout().flush()?;
         }
     }
 }
 
-struct Sender {
-    writer: Arc<Mutex<PeerWriter>>,
+struct Sender<W: AsyncWrite + Unpin> {
+    writer: W,
+    tmp_buf: [u8; 8000]
 }
 
-impl Sender {
-    async fn start(writer: PeerWriter) -> Result<(), peer_connection::Error> {
+impl<W: AsyncWrite + Unpin> Sender<W> {
+    async fn start(writer: W) -> Result<(), Error> {
         let mut this = Self {
-            writer: Arc::new(Mutex::new(writer)),
+            writer,
+            tmp_buf: [0; 8000]
         };
         this.run().await
     }
 
-    async fn run(&mut self) -> Result<(), peer_connection::Error> {
+    async fn run(&mut self) -> Result<(), Error> {
         let mut line = String::new();
 
         let mut lines = io::BufReader::new(io::stdin());
@@ -73,7 +74,7 @@ impl Sender {
         }
     }
 
-    async fn process_line(&mut self, line: &str) -> Result<(), peer_connection::Error> {
+    async fn process_line(&mut self, line: &str) -> Result<(), Error> {
         if line.trim().is_empty() {
             return Ok(());
         }
@@ -81,8 +82,8 @@ impl Sender {
         if line.as_bytes()[0] == b'/' {
             self.process_command(&line[1..]);
         } else {
-            let mut writer = self.writer.lock().await;
-            writer.send(line.as_bytes()).await?;
+            let msg = PeerMessage::Text(line);
+            serialize_into(&mut self.writer, &msg, &mut self.tmp_buf).await?;
         }
 
         Ok(())
@@ -100,7 +101,7 @@ impl Sender {
 
     async fn send_files(&mut self, path: &Path) -> Result<(), std::io::Error> {
         let metadatas = get_file_metadatas(path);
-        
+
         Ok(())
     }
 }

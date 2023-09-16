@@ -1,14 +1,10 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(dead_code)]
 
-mod chat;
-mod establisher;
-mod peer_connection;
-mod server_connection;
-
 use clap::{Parser, Subcommand};
-use establisher::Establisher;
-use server_connection::ServerAddr;
+use holepunch::client::establisher::Establisher;
+use holepunch::client::server_connection::ServerAddr;
+use holepunch::client::chat;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::process::exit;
 
@@ -83,6 +79,7 @@ async fn main() {
         });
 
     println!("Successfully established encrypted connection with peer.");
+
 
     chat::start(connection).await.unwrap_or_else(|err| {
         eprintln!("Peer disconnected: {err}");

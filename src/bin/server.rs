@@ -1,12 +1,11 @@
 #![warn(clippy::all, clippy::pedantic)]
 
-mod connection_handler;
-mod global_state;
+
 
 use std::sync::Arc;
 
-use connection_handler::ConnectionHandler;
-use global_state::State;
+use holepunch::server::connection_handler::ConnectionHandler;
+use holepunch::server::global_state::State;
 
 use tokio::net::TcpListener;
 
