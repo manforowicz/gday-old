@@ -1,15 +1,20 @@
-use crate::client::peer_connection::{FileMeta, PeerConnection};
-use crate::protocol::{deserialize_from, PeerMessage, serialize_into};
+use crate::client::establisher::PeerConnection;
+use crate::protocol::{deserialize_from, PeerMessage, serialize_into, FileMeta};
 use crate::Error;
 use owo_colors::OwoColorize;
 use std::io::Write;
 use std::path::Path;
 use tokio::io::{self, AsyncRead};
 use tokio::io::{AsyncBufReadExt, AsyncWrite};
+use crate::client::encrypted_connection::{Reader, Writer};
 
 
 pub async fn start(peer_connection: PeerConnection) -> Result<(), Error> {
-    let (reader, writer) = peer_connection.split();
+
+    let (reader, writer) = peer_connection.stream.into_split();
+
+    let reader = Reader::new(reader, peer_connection.shared_secret).await?;
+    let writer = Writer::new(writer, peer_connection.shared_secret).await?;
 
     let handle1 = tokio::spawn(Receiver::start(reader));
     let handle2 = tokio::spawn(Sender::start(writer));

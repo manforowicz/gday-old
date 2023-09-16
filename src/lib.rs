@@ -34,9 +34,14 @@ pub enum Error {
     PeerConnectFailed,
 
     #[error(
-        "Peer authentication failed: {0}. Double check the first 3 characters of your password!"
+        "Key exchange failed: {0}"
     )]
     SpakeFailed(#[from] spake2::Error),
+
+    #[error(
+        "Couldn't authenticate peer. Check last 3 characters of password!"
+    )]
+    PeerAuthenticationFailed,
 
     #[error("Rustls error")]
     Rustls(#[from] tokio_rustls::rustls::Error)

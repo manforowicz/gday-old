@@ -1,25 +1,28 @@
-use crate::client::{
-    peer_connection::PeerConnection,
-    server_connection::{ServerAddr, ServerConnection},
+use crate::client::server_connection::{ServerAddr, ServerConnection};
+use crate::protocol::{
+    deserialize_from, serialize_into, ClientMessage, FullContact, ServerMessage,
 };
+use crate::Error;
 use futures::stream::{FuturesUnordered, StreamExt};
-use crate::protocol::{deserialize_from, serialize_into, ClientMessage, FullContact, ServerMessage};
 use rand::seq::SliceRandom;
+use sha2::Digest;
+use sha2::Sha256;
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 use std::net::SocketAddr;
-use crate::Error;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpSocket, TcpStream},
 };
 use tokio_rustls::{self, client::TlsStream};
 
-
-
+pub struct PeerConnection {
+    pub stream: TcpStream,
+    pub shared_secret: [u8; 32],
+}
 pub struct Establisher {
     room_id: [u8; 6],
     peer_id: [u8; 3],
-    creator: bool,
+    is_creator: bool,
     connection: ServerConnection,
     tmp_buf: [u8; 68],
 }
@@ -33,7 +36,7 @@ impl Establisher {
         Ok(Self {
             room_id: Self::request_room(connection.get_any_stream(), &mut tmp_buf).await?,
             peer_id: Self::generate_peer_id(),
-            creator: true,
+            is_creator: true,
             connection,
             tmp_buf,
         })
@@ -68,9 +71,13 @@ impl Establisher {
         let connection = ServerConnection::new(server_addr).await?;
 
         Ok(Self {
-            room_id: password[0..6].try_into().expect("Unreachable. Slice is correct size."),
-            peer_id: password[6..9].try_into().expect("Unreachable. Slice is correct size."),
-            creator: false,
+            room_id: password[0..6]
+                .try_into()
+                .expect("Unreachable. Slice is correct size."),
+            peer_id: password[6..9]
+                .try_into()
+                .expect("Unreachable. Slice is correct size."),
+            is_creator: false,
             connection,
             tmp_buf: [0; 68],
         })
@@ -89,31 +96,33 @@ impl Establisher {
 
         let (local_v6, local_v4) = self.connection.get_all_addr();
 
+        let c = self.is_creator;
+
         let p = self.peer_id;
         println!("peer id: {p:?}");
 
         let mut futs = FuturesUnordered::new();
 
-        if let Some(addr) = local_v6 {
-            futs.push(tokio::spawn(Self::try_accept(addr, p)));
+        if let Some(local) = local_v6 {
+            futs.push(tokio::spawn(Self::try_accept(local, p, c)));
 
-            if let Some(socket) = peer.private_v6 {
-                futs.push(tokio::spawn(Self::try_connect(addr, socket, p)));
+            if let Some(peer) = peer.private_v6 {
+                futs.push(tokio::spawn(Self::try_connect(local, peer, p, c)));
             }
-            if let Some(socket) = peer.public_v6 {
-                futs.push(tokio::spawn(Self::try_connect(addr, socket, p)));
+            if let Some(peer) = peer.public_v6 {
+                futs.push(tokio::spawn(Self::try_connect(local, peer, p, c)));
             }
         }
 
-        if let Some(addr) = local_v4 {
-            futs.push(tokio::spawn(Self::try_accept(addr, p)));
+        if let Some(local) = local_v4 {
+            futs.push(tokio::spawn(Self::try_accept(local, p, c)));
 
-            if let Some(socket) = peer.private_v4 {
-                futs.push(tokio::spawn(Self::try_connect(addr, socket, p)));
+            if let Some(peer) = peer.private_v4 {
+                futs.push(tokio::spawn(Self::try_connect(local, peer, p, c)));
             }
 
-            if let Some(socket) = peer.public_v4 {
-                futs.push(tokio::spawn(Self::try_connect(addr, socket, p)));
+            if let Some(peer) = peer.public_v4 {
+                futs.push(tokio::spawn(Self::try_connect(local, peer, p, c)));
             }
         }
 
@@ -132,11 +141,11 @@ impl Establisher {
         let mut conns = self.connection.get_all_streams_with_sockets();
 
         for conn in &mut conns {
-            let msg = ClientMessage::SendContact(self.room_id, self.creator, Some(conn.1));
+            let msg = ClientMessage::SendContact(self.room_id, self.is_creator, Some(conn.1));
             serialize_into(conn.0, &msg, &mut self.tmp_buf).await?;
         }
 
-        let msg = ClientMessage::DoneSending(self.room_id, self.creator);
+        let msg = ClientMessage::DoneSending(self.room_id, self.is_creator);
         serialize_into(conns[0].0, &msg, &mut self.tmp_buf).await?;
 
         println!("Waiting for peer...");
@@ -155,13 +164,14 @@ impl Establisher {
         local: impl Into<SocketAddr>,
         peer: impl Into<SocketAddr>,
         peer_id: [u8; 3],
+        is_creator: bool,
     ) -> Result<PeerConnection, std::io::Error> {
         let local = local.into();
         let peer = peer.into();
         loop {
             let local_socket = Self::get_local_socket(local)?;
             let stream = local_socket.connect(peer).await?;
-            if let Ok(connection) = Self::verify_peer(peer_id, stream).await {
+            if let Ok(connection) = Self::verify_peer(peer_id, stream, is_creator).await {
                 return Ok(connection);
             }
         }
@@ -170,19 +180,24 @@ impl Establisher {
     async fn try_accept(
         local: impl Into<SocketAddr>,
         peer_id: [u8; 3],
+        is_creator: bool,
     ) -> Result<PeerConnection, std::io::Error> {
         let local = local.into();
         let local_socket = Self::get_local_socket(local)?;
         let listener = local_socket.listen(1024)?;
         loop {
             let (stream, _addr) = listener.accept().await?;
-            if let Ok(connection) = Self::verify_peer(peer_id, stream).await {
+            if let Ok(connection) = Self::verify_peer(peer_id, stream, is_creator).await {
                 return Ok(connection);
             }
         }
     }
 
-    async fn verify_peer(peer_id: [u8; 3], mut stream: TcpStream) -> Result<PeerConnection, Error> {
+    async fn verify_peer(
+        peer_id: [u8; 3],
+        mut stream: TcpStream,
+        is_creator: bool,
+    ) -> Result<PeerConnection, Error> {
         let (spake, outbound_msg) = Spake2::<Ed25519Group>::start_symmetric(
             &Password::new(peer_id),
             &Identity::new(b"psend peer"),
@@ -194,9 +209,33 @@ impl Establisher {
         let mut inbound_message = [0; 33];
         stream.read_exact(&mut inbound_message).await?;
 
-        let shared_key = spake.finish(&inbound_message)?[0..44].try_into().unwrap();
+        let shared_key: [u8; 32] = spake.finish(&inbound_message)?.try_into().unwrap();
 
-        Ok(PeerConnection { stream, shared_secret: shared_key })
+        let my_code = Self::get_verification_code(shared_key, is_creator);
+        let peer_code = Self::get_verification_code(shared_key, !is_creator);
+
+        stream.write_all(&my_code).await?;
+
+        let mut received = [0; 32];
+
+        stream.read_exact(&mut received).await?;
+
+        if received == peer_code {
+            Ok(PeerConnection {
+                stream,
+                shared_secret: shared_key,
+            })
+        } else {
+            Err(Error::PeerAuthenticationFailed)
+        }
+    }
+
+    fn get_verification_code(key: [u8; 32], is_creator: bool) -> [u8; 32] {
+        Sha256::new()
+            .chain_update(key)
+            .chain_update([u8::from(is_creator)])
+            .finalize()
+            .into()
     }
 
     fn get_local_socket(local_addr: SocketAddr) -> Result<TcpSocket, std::io::Error> {

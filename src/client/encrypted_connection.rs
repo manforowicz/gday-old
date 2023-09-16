@@ -9,10 +9,10 @@ use std::{
     pin::Pin,
     task::{ready, Context, Poll},
 };
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 
 #[pin_project]
-pub struct Reader<R: AsyncRead> {
+pub struct Reader<R: AsyncRead + Unpin> {
     #[pin]
     reader: R,
     decryptor: DecryptorLE31<ChaCha20Poly1305>,
@@ -21,23 +21,25 @@ pub struct Reader<R: AsyncRead> {
     plaintext: VecDeque<u8>,
 }
 
-impl<R: AsyncRead> Reader<R> {
-    pub fn new(reader: R, shared_secret: [u8; 44]) -> Self {
-        let key = shared_secret[0..32].try_into().unwrap();
-        let nonce = shared_secret[32..44].try_into().unwrap();
+impl<R: AsyncRead + Unpin> Reader<R> {
+    pub async fn new(mut reader: R, shared_secret: [u8; 32]) -> Result<Self, std::io::Error> {
+        let key = &shared_secret.try_into().unwrap();
 
-        let decryptor = DecryptorLE31::new(key, nonce);
-        Self {
+        let mut nonce = [0; 12];
+        reader.read_exact(&mut nonce).await?;
+
+        let decryptor = DecryptorLE31::new(key, nonce.as_ref().into());
+        Ok(Self {
             reader,
             decryptor,
             cipher_buf: Vec::new(),
             decryption_space: Vec::new(),
             plaintext: VecDeque::new(),
-        }
+        })
     }
 }
 
-impl<R: AsyncRead> AsyncRead for Reader<R> {
+impl<R: AsyncRead + Unpin> AsyncRead for Reader<R> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -91,7 +93,7 @@ impl<R: AsyncRead> AsyncRead for Reader<R> {
 }
 
 #[pin_project]
-pub struct Writer<W: AsyncWrite> {
+pub struct Writer<W: AsyncWrite + Unpin> {
     #[pin]
     writer: W,
     encryptor: EncryptorLE31<ChaCha20Poly1305>,
@@ -99,17 +101,18 @@ pub struct Writer<W: AsyncWrite> {
     ciphertext: VecDeque<u8>,
 }
 
-impl<W: AsyncWrite> Writer<W> {
-    pub fn new(writer: W, shared_secret: [u8; 44]) -> Self {
-        let key = shared_secret[0..32].try_into().unwrap();
-        let nonce = shared_secret[32..44].try_into().unwrap();
-        let encryptor = EncryptorLE31::new(key, nonce);
-        Self {
+impl<W: AsyncWrite + Unpin> Writer<W> {
+    pub async fn new(mut writer: W, shared_secret: [u8; 32]) -> Result<Self, std::io::Error> {
+        let key = &shared_secret.into();
+        let nonce: [u8; 12] = rand::random();
+        let encryptor = EncryptorLE31::new(key, nonce.as_ref().into());
+        writer.write_all(&nonce).await?;
+        Ok(Self {
             writer,
             encryptor,
             encryption_space: Vec::new(),
             ciphertext: VecDeque::new(),
-        }
+        })
     }
 
     fn flush_local_buffer(
@@ -132,7 +135,7 @@ impl<W: AsyncWrite> Writer<W> {
     }
 }
 
-impl<W: AsyncWrite> AsyncWrite for Writer<W> {
+impl<W: AsyncWrite + Unpin> AsyncWrite for Writer<W> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
