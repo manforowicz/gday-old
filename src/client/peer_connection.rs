@@ -8,15 +8,15 @@ use crate::client::encrypted_connection::{Reader, Writer};
 
 pub struct PeerConnection {
     pub stream: TcpStream,
-    pub shared_key: [u8; 32],
+    pub shared_secret: [u8; 44],
 }
 
 impl PeerConnection {
     pub fn split(self) -> (Reader<OwnedReadHalf>, Writer<OwnedWriteHalf>) {
         let (read, write) = self.stream.into_split();
         (
-            Reader::new(read, self.shared_key),
-            Writer::new(write, self.shared_key),
+            Reader::new(read, self.shared_secret),
+            Writer::new(write, self.shared_secret),
         )
     }
 }

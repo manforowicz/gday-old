@@ -38,5 +38,8 @@ pub enum Error {
     )]
     SpakeFailed(#[from] spake2::Error),
 
+    #[error("Rustls error")]
+    Rustls(#[from] tokio_rustls::rustls::Error)
+
 
 }

@@ -68,8 +68,8 @@ impl Establisher {
         let connection = ServerConnection::new(server_addr).await?;
 
         Ok(Self {
-            room_id: password[0..6].try_into().unwrap(),
-            peer_id: password[6..9].try_into().unwrap(),
+            room_id: password[0..6].try_into().expect("Unreachable. Slice is correct size."),
+            peer_id: password[6..9].try_into().expect("Unreachable. Slice is correct size."),
             creator: false,
             connection,
             tmp_buf: [0; 68],
@@ -191,7 +191,7 @@ impl Establisher {
 
         let shared_key = spake.finish(&inbound_message)?.try_into().unwrap();
 
-        Ok(PeerConnection { stream, shared_key })
+        Ok(PeerConnection { stream, shared_secret: shared_key })
     }
 
     fn get_local_socket(local_addr: SocketAddr) -> Result<TcpSocket, std::io::Error> {

@@ -8,6 +8,8 @@ use tokio::net::{TcpSocket, TcpStream};
 use tokio_rustls::rustls;
 use tokio_rustls::{self, client::TlsStream, TlsConnector};
 
+use crate::Error;
+
 pub struct ServerAddr {
     pub v6: SocketAddrV6,
     pub v4: SocketAddrV4,
@@ -19,15 +21,15 @@ pub struct ServerConnection {
 }
 
 impl ServerConnection {
-    pub async fn new(server_addr: ServerAddr) -> Result<Self, std::io::Error> {
+    pub async fn new(server_addr: ServerAddr) -> Result<Self, Error> {
         let root_cert = include_bytes!("cert_authority.der").to_vec();
-        let tls_conn = Self::get_tls_connector(root_cert).unwrap();
+        let tls_conn = Self::get_tls_connector(root_cert)?;
 
         let v6 = Self::connect_to_v6(server_addr.v6, server_addr.name, &tls_conn).await;
         let v4 = Self::connect_to_v4(server_addr.v4, server_addr.name, &tls_conn).await;
 
         if v6.is_err() && v4.is_err() {
-            Err(v4.unwrap_err())
+            Err(v4.unwrap_err())?
         } else {
             Ok(Self {
                 v6: v6.ok(),

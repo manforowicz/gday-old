@@ -1,13 +1,11 @@
-use crate::client::peer_connection::{self, FileMeta, PeerConnection};
+use crate::client::peer_connection::{FileMeta, PeerConnection};
 use crate::protocol::{deserialize_from, PeerMessage, serialize_into};
 use crate::Error;
 use owo_colors::OwoColorize;
 use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
 use tokio::io::{self, AsyncRead};
 use tokio::io::{AsyncBufReadExt, AsyncWrite};
-use tokio::sync::Mutex;
 
 
 pub async fn start(peer_connection: PeerConnection) -> Result<(), Error> {

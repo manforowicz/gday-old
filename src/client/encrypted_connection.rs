@@ -1,6 +1,6 @@
 use chacha20poly1305::{
     aead::stream::{DecryptorLE31, EncryptorLE31},
-    ChaCha20Poly1305, KeyInit,
+    ChaCha20Poly1305,
 };
 use pin_project::pin_project;
 use std::{
@@ -22,7 +22,7 @@ pub struct Reader<R: AsyncRead> {
 }
 
 impl<R: AsyncRead> Reader<R> {
-    pub fn new(reader: R, shared_secret: [u8; 32]) -> Self {
+    pub fn new(reader: R, shared_secret: [u8; 44]) -> Self {
         let key = shared_secret[0..12].try_into().unwrap();
         let nonce = shared_secret[12..44].try_into().unwrap();
 
@@ -81,7 +81,7 @@ impl<R: AsyncRead> AsyncRead for Reader<R> {
             let b_slice = &b[0..(len - a.len())];
             buf.put_slice(b_slice);
         } else {
-            buf.put_slice(&a[0..len])
+            buf.put_slice(&a[0..len]);
         }
 
         this.plaintext.truncate(len);
@@ -100,10 +100,10 @@ pub struct Writer<W: AsyncWrite> {
 }
 
 impl<W: AsyncWrite> Writer<W> {
-    pub fn new(writer: W, key: [u8; 32]) -> Self {
-        let nonce: [u8; 12] = rand::random();
-        let aead = ChaCha20Poly1305::new(&key.into());
-        let encryptor = EncryptorLE31::from_aead(aead, nonce.as_ref().into());
+    pub fn new(writer: W, shared_secret: [u8; 44]) -> Self {
+        let key = shared_secret[0..12].try_into().unwrap();
+        let nonce = shared_secret[12..44].try_into().unwrap();
+        let encryptor = EncryptorLE31::new(key, nonce);
         Self {
             writer,
             encryptor,
@@ -146,14 +146,16 @@ impl<W: AsyncWrite> AsyncWrite for Writer<W> {
         this.encryption_space.extend_from_slice(buf);
         this.encryptor
             .encrypt_next_in_place(&[], this.encryption_space)
-            .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Decryption error"))?;
+            .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Encryption error"))?;
 
-        let len = (this.encryption_space.len() as u32 + 4).to_be_bytes();
+        let len = u32::try_from(this.encryption_space.len())
+            .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Message too long"))?;
+
+        let len = (len + 4).to_be_bytes();
 
         this.encryption_space.splice(0..0, len);
 
         let bytes_written = ready!(this.writer.as_mut().poll_write(cx, this.encryption_space))?;
-
 
         this.ciphertext
             .extend(&this.encryption_space[bytes_written..]);
