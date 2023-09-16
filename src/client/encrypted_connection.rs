@@ -22,9 +22,9 @@ pub struct Reader<R: AsyncRead> {
 }
 
 impl<R: AsyncRead> Reader<R> {
-    pub fn new(reader: R, shared_secret: [u8; 24]) -> Self {
-        let key = shared_secret[0..12].try_into().unwrap();
-        let nonce = shared_secret[12..24].try_into().unwrap();
+    pub fn new(reader: R, shared_secret: [u8; 44]) -> Self {
+        let key = shared_secret[0..32].try_into().unwrap();
+        let nonce = shared_secret[32..44].try_into().unwrap();
 
         let decryptor = DecryptorLE31::new(key, nonce);
         Self {
@@ -100,9 +100,9 @@ pub struct Writer<W: AsyncWrite> {
 }
 
 impl<W: AsyncWrite> Writer<W> {
-    pub fn new(writer: W, shared_secret: [u8; 24]) -> Self {
-        let key = shared_secret[0..12].try_into().unwrap();
-        let nonce = shared_secret[12..24].try_into().unwrap();
+    pub fn new(writer: W, shared_secret: [u8; 44]) -> Self {
+        let key = shared_secret[0..32].try_into().unwrap();
+        let nonce = shared_secret[32..44].try_into().unwrap();
         let encryptor = EncryptorLE31::new(key, nonce);
         Self {
             writer,

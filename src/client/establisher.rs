@@ -194,7 +194,7 @@ impl Establisher {
         let mut inbound_message = [0; 33];
         stream.read_exact(&mut inbound_message).await?;
 
-        let shared_key = spake.finish(&inbound_message)?.try_into().unwrap();
+        let shared_key = spake.finish(&inbound_message)?[0..44].try_into().unwrap();
 
         Ok(PeerConnection { stream, shared_secret: shared_key })
     }
