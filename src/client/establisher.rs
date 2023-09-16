@@ -187,10 +187,11 @@ impl Establisher {
             &Password::new(peer_id),
             &Identity::new(b"psend peer"),
         );
+        println!("trying to verify");
 
         stream.write_all(&outbound_msg).await?;
 
-        let mut inbound_message = [0; 44];
+        let mut inbound_message = [0; 33];
         stream.read_exact(&mut inbound_message).await?;
 
         let shared_key = spake.finish(&inbound_message)?.try_into().unwrap();
