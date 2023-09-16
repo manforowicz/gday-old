@@ -16,6 +16,8 @@ pub async fn start(peer_connection: PeerConnection) -> Result<(), Error> {
     let reader = Reader::new(reader, peer_connection.shared_secret).await?;
     let writer = Writer::new(writer, peer_connection.shared_secret).await?;
 
+    println!("foboodfsa");
+
     let handle1 = tokio::spawn(Receiver::start(reader));
     let handle2 = tokio::spawn(Sender::start(writer));
 

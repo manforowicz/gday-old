@@ -99,7 +99,6 @@ impl Establisher {
         let c = self.is_creator;
 
         let p = self.peer_id;
-        println!("peer id: {p:?}");
 
         let mut futs = FuturesUnordered::new();
 
@@ -126,9 +125,7 @@ impl Establisher {
             }
         }
 
-        println!("Hello?");
         while let Some(result) = futs.next().await {
-            print!("waiting on futures");
             if let Ok(Ok(connection)) = result {
                 return Ok(connection);
             }

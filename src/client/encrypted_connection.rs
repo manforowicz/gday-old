@@ -105,8 +105,8 @@ impl<W: AsyncWrite + Unpin> Writer<W> {
     pub async fn new(mut writer: W, shared_secret: [u8; 32]) -> Result<Self, std::io::Error> {
         let key = &shared_secret.into();
         let nonce: [u8; 12] = rand::random();
-        let encryptor = EncryptorLE31::new(key, nonce.as_ref().into());
         writer.write_all(&nonce).await?;
+        let encryptor = EncryptorLE31::new(key, nonce.as_ref().into());
         Ok(Self {
             writer,
             encryptor,
