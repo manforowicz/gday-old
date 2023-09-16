@@ -85,6 +85,7 @@ impl Establisher {
 
     pub async fn get_peer_conection(&mut self) -> Result<PeerConnection, Error> {
         let peer = self.get_peer_contact().await?;
+        println!("Peer contact: {peer:?}");
 
         let (local_v6, local_v4) = self.connection.get_all_addr();
 

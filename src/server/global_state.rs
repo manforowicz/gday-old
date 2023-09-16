@@ -111,17 +111,18 @@ impl State {
 
             let peer = &mut room[peer_i];
             peer.waiting.take().unwrap().send(client_info).unwrap();
+            rooms.remove(&room_id);
         }
 
         Ok(rx)
     }
 
-    fn room_timeout(&self, room: [u8; 6]) {
+    fn room_timeout(&self, room_id: [u8; 6]) {
         let state = self.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(60 * 10)).await;
             let mut rooms = state.rooms.lock().unwrap();
-            rooms.remove(&room);
+            rooms.remove(&room_id);
         });
     }
 }
