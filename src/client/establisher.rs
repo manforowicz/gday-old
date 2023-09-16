@@ -186,7 +186,7 @@ impl Establisher {
 
         stream.write_all(&outbound_msg).await?;
 
-        let mut inbound_message = [0; 33];
+        let mut inbound_message = [0; 44];
         stream.read_exact(&mut inbound_message).await?;
 
         let shared_key = spake.finish(&inbound_message)?.try_into().unwrap();
