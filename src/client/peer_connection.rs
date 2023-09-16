@@ -8,7 +8,7 @@ use crate::client::encrypted_connection::{Reader, Writer};
 
 pub struct PeerConnection {
     pub stream: TcpStream,
-    pub shared_secret: [u8; 44],
+    pub shared_secret: [u8; 24],
 }
 
 impl PeerConnection {
