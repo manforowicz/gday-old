@@ -1,5 +1,5 @@
 use chacha20poly1305::{
-    aead::{stream::{DecryptorLE31, EncryptorLE31}, generic_array::GenericArray},
+    aead::stream::{DecryptorLE31, EncryptorLE31},
     ChaCha20Poly1305,
 };
 use pin_project::pin_project;
@@ -24,10 +24,10 @@ pub struct Reader<R: AsyncRead + Unpin> {
 impl<R: AsyncRead + Unpin> Reader<R> {
     pub async fn new(mut reader: R, shared_secret: [u8; 32]) -> Result<Self, std::io::Error> {
 
-        let mut nonce = [0; 12];
+        let mut nonce = [0; 8];
         reader.read_exact(&mut nonce).await?;
 
-        let decryptor = DecryptorLE31::new(&shared_secret.into(), GenericArray::from_slice(&nonce));
+        let decryptor = DecryptorLE31::new(&shared_secret.into(), &nonce.into());
         Ok(Self {
             reader,
             decryptor,
@@ -102,10 +102,10 @@ pub struct Writer<W: AsyncWrite + Unpin> {
 
 impl<W: AsyncWrite + Unpin> Writer<W> {
     pub async fn new(mut writer: W, shared_secret: [u8; 32]) -> Result<Self, std::io::Error> {
-        let nonce: [u8; 12] = rand::random();
+        let nonce: [u8; 8] = rand::random();
         
         writer.write_all(&nonce).await?;
-        let encryptor = EncryptorLE31::new(&shared_secret.into(), GenericArray::from_slice(&nonce));
+        let encryptor = EncryptorLE31::new(&shared_secret.into(), &nonce.into());
         Ok(Self {
             writer,
             encryptor,
