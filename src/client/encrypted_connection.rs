@@ -16,7 +16,7 @@ pub struct Reader<R: AsyncRead + Unpin> {
     #[pin]
     reader: R,
     decryptor: DecryptorLE31<ChaCha20Poly1305>,
-    cipher_buf: Vec<u8>,
+    cipher_buf: VecDeque<u8>,
     decryption_space: Vec<u8>,
     plaintext: VecDeque<u8>,
 }
@@ -31,35 +31,35 @@ impl<R: AsyncRead + Unpin> Reader<R> {
         Ok(Self {
             reader,
             decryptor,
-            cipher_buf: Vec::new(),
+            cipher_buf: VecDeque::new(),
             decryption_space: Vec::new(),
             plaintext: VecDeque::new(),
         })
     }
 }
 
-impl<R: AsyncRead + Unpin> AsyncRead for Reader<R> {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
+impl <R: AsyncRead + Unpin> Reader<R> {
+    fn read_to_local_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> std::io::Result<()> {
         let this = self.project();
-
         let old_len = this.cipher_buf.len();
 
         this.cipher_buf.resize(old_len + 8000, 0);
 
-        let mut read_buf = ReadBuf::new(&mut this.cipher_buf[old_len..]);
+        let mut read_buf = ReadBuf::new(&mut this.cipher_buf.make_contiguous()[old_len..]);
 
-        ready!(this.reader.poll_read(cx, &mut read_buf))?;
+        let _poll = this.reader.poll_read(cx, &mut read_buf);
+
         let bytes_read = read_buf.filled().len();
         this.cipher_buf.resize(old_len + bytes_read, 0);
 
-        if let Some(header) = this.cipher_buf.get(0..4) {
+
+        let cipher_buf_contiguous = this.cipher_buf.make_contiguous();
+
+
+        if let Some(header) = cipher_buf_contiguous.get(0..4) {
             let length = u32::from_be_bytes(header.try_into().unwrap()) as usize;
 
-            if let Some(ciphertext) = this.cipher_buf.get(4..length) {
+            if let Some(ciphertext) = cipher_buf_contiguous.get(4..length) {
                 this.decryption_space.clear();
                 this.decryption_space.extend_from_slice(ciphertext);
                 this.decryptor
@@ -68,26 +68,48 @@ impl<R: AsyncRead + Unpin> AsyncRead for Reader<R> {
 
                 this.plaintext.extend(this.decryption_space.iter());
 
-                this.cipher_buf.rotate_left(length);
-                this.cipher_buf.truncate(length);
+                this.cipher_buf.drain(0..length);
             }
         }
 
-        let len = std::cmp::min(buf.remaining(), this.plaintext.len());
+        Ok(())
 
-        let (a, b) = this.plaintext.as_slices();
+    }
+}
 
-        if a.len() < len {
-            buf.put_slice(a);
-            let b_slice = &b[0..(len - a.len())];
-            buf.put_slice(b_slice);
-        } else {
-            buf.put_slice(&a[0..len]);
+impl<R: AsyncRead + Unpin> AsyncRead for Reader<R> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        
+        
+        if self.plaintext.len() < buf.remaining() {
+            self.as_mut().read_to_local_buf(cx)?;
         }
+        
+        let this = self.project();
 
-        this.plaintext.truncate(len);
+        if this.plaintext.is_empty() {
+            Poll::Pending
+        } else {
+            let len = std::cmp::min(buf.remaining(), this.plaintext.len());
 
-        Poll::Ready(Ok(()))
+            let (a, b) = this.plaintext.as_slices();
+    
+            if a.len() < len {
+                buf.put_slice(a);
+                let b_slice = &b[0..(len - a.len())];
+                buf.put_slice(b_slice);
+            } else {
+                buf.put_slice(&a[0..len]);
+            }
+    
+            this.plaintext.drain(0..len);
+    
+            Poll::Ready(Ok(()))
+        }
     }
 }
 
