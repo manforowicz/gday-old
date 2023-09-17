@@ -162,7 +162,7 @@ impl<W: AsyncWrite + Unpin> AsyncWrite for Writer<W> {
         this.ciphertext
             .extend(&this.encryption_space[bytes_written..]);
 
-        todo!()
+        Poll::Ready(Ok(buf.len()))
     }
 
     fn poll_flush(
