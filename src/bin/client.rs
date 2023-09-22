@@ -2,11 +2,14 @@
 #![allow(dead_code)]
 
 use clap::{Parser, Subcommand};
-use holepunch::client::establisher::Establisher;
+use holepunch::client::holepuncher;
+use holepunch::client::contact_share::{ContactSharer, PeerConnection};
+use holepunch::client::file_dialog::confirm_send;
 use holepunch::client::server_connection::ServerAddr;
-use holepunch::client::chat;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+use std::path::PathBuf;
 use std::process::exit;
+use std::iter::Iterator;
 
 const SERVER: ServerAddr = ServerAddr {
     v6: SocketAddrV6::new(
@@ -31,8 +34,11 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Create a room
-    Start,
+    /// Create a room to send files
+    Send { path: PathBuf },
+
+    /// Create a room to chat
+    Chat,
 
     /// Join a room
     Join { password: String },
@@ -42,47 +48,92 @@ enum Commands {
 async fn main() {
     let cli = Cli::parse();
 
-    let mut establisher = match cli.operation {
-        Commands::Start => {
-            let establisher = Establisher::create_room(SERVER)
-                .await
-                .unwrap_or_else(|err| {
-                    eprintln!("Error connecting to server: {err}");
-                    exit(1)
-                });
-            let password = String::from_utf8(establisher.get_password().to_vec()).unwrap();
-            println!("Send this password to your peer: {password}");
-            establisher
-        }
-        Commands::Join { mut password } => {
-            password.retain(|c| !c.is_whitespace() && c != '-');
-            let password = password.to_uppercase();
-            let password: [u8; 9] = password.as_bytes().try_into().unwrap_or_else(|_| {
-                eprintln!("Provided password must be exactly 9 alphanumeric characters!");
+    match cli.operation {
+        Commands::Send { path } => {
+            let files = confirm_send(&path).unwrap_or_else(|err| {
+                eprintln!("{err}");
                 exit(1)
             });
-            Establisher::join_room(SERVER, password)
-                .await
-                .unwrap_or_else(|err| {
-                    eprintln!("Error joining room: {err}");
-                    exit(1)
-                })
+            let connection = start_connection();
         }
-    };
 
-    let connection = establisher
-        .get_peer_conection()
-        .await
-        .unwrap_or_else(|err| {
-            eprintln!("Error getting peer info from server: {err}");
-            exit(1)
-        });
+        Commands::Chat => {
+            let connection = start_connection();
+        }
+
+        Commands::Join { password} => {
+            let connection = join_connection(password);
+        }
+    }
 
     println!("Successfully established encrypted connection with peer.");
 
 
-    chat::start(connection).await.unwrap_or_else(|err| {
-        eprintln!("Peer disconnected: {err}");
+}
+
+
+
+
+
+
+async fn start_connection() -> PeerConnection {
+    let (sharer, room_id) = ContactSharer::create_room(SERVER)
+        .await
+        .unwrap_or_else(|err| {
+            eprintln!("Error connecting to server: {err}");
+            exit(1)
+    });
+
+    let peer_secret = holepuncher::random_peer_secret();
+    let mut password = room_id.into_iter().chain(peer_secret).collect::<Vec<u8>>();
+
+    password.insert(4, b'-');
+    password.insert(8, b'-');
+
+    let password = String::from_utf8(password).unwrap();
+    println!("Have your peer run: gday join {password}");
+    let (peer, me) = sharer.get_peer_contact().await.unwrap_or_else(|err| {
+        eprintln!("Error getting peer contact: {err}");
         exit(1)
     });
+
+    holepuncher::get_peer_conection(peer, peer_secret, true, me).await.unwrap_or_else(|err| {
+        eprintln!("Couldn't connect to peer: {err}");
+        exit(1);
+    })
+}
+
+async fn join_connection(mut password: String) -> PeerConnection {
+    password.retain(|c| !c.is_whitespace() && c != '-');
+    let password = password.to_uppercase();
+    let password: [u8; 9] = password.as_bytes().try_into().unwrap_or_else(|_| {
+        eprintln!("Password must be exactly 9 characters!");
+        exit(1)
+    });
+
+    if !password.iter().all(|c| b"ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890".contains(c)) {
+        eprintln!("Password must be alphanumeric!");
+        exit(1)
+    }
+
+    let room_id = password[0..6].try_into().unwrap();
+    let peer_secret = password[6..9].try_into().unwrap();
+
+
+    let sharer = ContactSharer::join_room(SERVER, room_id)
+        .await
+        .unwrap_or_else(|err| {
+            eprintln!("Error joining room: {err}");
+            exit(1)
+        });
+
+    let (peer, me) = sharer.get_peer_contact().await.unwrap_or_else(|err| {
+        eprintln!("Error getting peer contact: {err}");
+        exit(1)
+    });
+
+    holepuncher::get_peer_conection(peer, peer_secret, false, me).await.unwrap_or_else(|err| {
+        eprintln!("Couldn't connect to peer: {err}");
+        exit(1);
+    })
 }

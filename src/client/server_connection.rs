@@ -8,7 +8,7 @@ use tokio::net::{TcpSocket, TcpStream};
 use tokio_rustls::rustls;
 use tokio_rustls::{self, client::TlsStream, TlsConnector};
 
-use crate::Error;
+use crate::{Error, protocol::Contact};
 
 pub struct ServerAddr {
     pub v6: SocketAddrV6,
@@ -61,11 +61,11 @@ impl ServerConnection {
         streams
     }
 
-    pub fn get_all_addr(&self) -> (Option<SocketAddrV6>, Option<SocketAddrV4>) {
-        (
-            self.v6.as_ref().map(|conn| conn.1),
-            self.v4.as_ref().map(|conn| conn.1),
-        )
+    pub fn get_my_contact(&self) -> Contact {
+        Contact {
+            v6: self.v6.as_ref().map(|conn| conn.1),
+            v4: self.v4.as_ref().map(|conn| conn.1),
+        }
     }
 
     fn get_tls_connector(cert_authority: Vec<u8>) -> Result<TlsConnector, rustls::Error> {

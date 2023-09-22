@@ -23,7 +23,6 @@ pub struct Reader<R: AsyncRead + Unpin> {
 
 impl<R: AsyncRead + Unpin> Reader<R> {
     pub async fn new(mut reader: R, shared_secret: [u8; 32]) -> Result<Self, std::io::Error> {
-
         let mut nonce = [0; 8];
         reader.read_exact(&mut nonce).await?;
 
@@ -38,8 +37,12 @@ impl<R: AsyncRead + Unpin> Reader<R> {
     }
 }
 
-impl <R: AsyncRead + Unpin> Reader<R> {
-    fn read_to_local_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> std::io::Result<()> {
+impl<R: AsyncRead + Unpin> Reader<R> {
+    /// Return bool is true when EOF is reached.
+    fn read_to_local_buf(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Result<bool, std::io::Error> {
         let this = self.project();
         let old_len = this.cipher_buf.len();
 
@@ -47,14 +50,20 @@ impl <R: AsyncRead + Unpin> Reader<R> {
 
         let mut read_buf = ReadBuf::new(&mut this.cipher_buf.make_contiguous()[old_len..]);
 
-        let _poll = this.reader.poll_read(cx, &mut read_buf);
+        let poll = this.reader.poll_read(cx, &mut read_buf)?;
 
         let bytes_read = read_buf.filled().len();
+
+        if bytes_read == 0 {
+            match poll {
+                Poll::Pending => return Ok(false),
+                Poll::Ready(_) => return Ok(true),
+            }
+        }
+
         this.cipher_buf.resize(old_len + bytes_read, 0);
 
-
         let cipher_buf_contiguous = this.cipher_buf.make_contiguous();
-
 
         if let Some(header) = cipher_buf_contiguous.get(0..4) {
             let length = u32::from_be_bytes(header.try_into().unwrap()) as usize;
@@ -72,8 +81,7 @@ impl <R: AsyncRead + Unpin> Reader<R> {
             }
         }
 
-        Ok(())
-
+        Ok(false)
     }
 }
 
@@ -83,33 +91,33 @@ impl<R: AsyncRead + Unpin> AsyncRead for Reader<R> {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        
-        
         if self.plaintext.len() < buf.remaining() {
-            self.as_mut().read_to_local_buf(cx)?;
+            let is_eof = self.as_mut().read_to_local_buf(cx)?;
+            if self.plaintext.is_empty() {
+                if is_eof {
+                    return Poll::Ready(Ok(()));
+                }
+                return Poll::Pending;
+            }
         }
-        
+
         let this = self.project();
 
-        if this.plaintext.is_empty() {
-            Poll::Pending
-        } else {
-            let len = std::cmp::min(buf.remaining(), this.plaintext.len());
+        let len = std::cmp::min(buf.remaining(), this.plaintext.len());
 
-            let (a, b) = this.plaintext.as_slices();
-    
-            if a.len() < len {
-                buf.put_slice(a);
-                let b_slice = &b[0..(len - a.len())];
-                buf.put_slice(b_slice);
-            } else {
-                buf.put_slice(&a[0..len]);
-            }
-    
-            this.plaintext.drain(0..len);
-    
-            Poll::Ready(Ok(()))
+        let (a, b) = this.plaintext.as_slices();
+
+        if a.len() < len {
+            buf.put_slice(a);
+            let b_slice = &b[0..(len - a.len())];
+            buf.put_slice(b_slice);
+        } else {
+            buf.put_slice(&a[0..len]);
         }
+
+        this.plaintext.drain(0..len);
+
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -125,7 +133,7 @@ pub struct Writer<W: AsyncWrite + Unpin> {
 impl<W: AsyncWrite + Unpin> Writer<W> {
     pub async fn new(mut writer: W, shared_secret: [u8; 32]) -> Result<Self, std::io::Error> {
         let nonce: [u8; 8] = rand::random();
-        
+
         writer.write_all(&nonce).await?;
         let encryptor = EncryptorLE31::new(&shared_secret.into(), &nonce.into());
         Ok(Self {

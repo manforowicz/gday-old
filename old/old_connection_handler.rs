@@ -169,11 +169,11 @@ fn addr_v6_to_msg(addr: SocketAddrV6) -> [u8; 18] {
     msg
 }
 
-fn addr_v4_to_msg(addr: SocketAddrV4) -> [u8; 6] {
+fn addr_v4_to_msg(addr: SocketAddrV4) -> RoomId {
     let ip = addr.ip().octets();
     let port = addr.port().to_be_bytes();
 
-    let mut msg: [u8; 6] = [0; 6];
+    let mut msg: RoomId = [0; 6];
     let (left, right) = msg.split_at_mut(4);
     left.copy_from_slice(&ip);
     right.copy_from_slice(&port);

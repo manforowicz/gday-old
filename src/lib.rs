@@ -44,7 +44,5 @@ pub enum Error {
     PeerAuthenticationFailed,
 
     #[error("Rustls error")]
-    Rustls(#[from] tokio_rustls::rustls::Error)
-
-
+    Rustls(#[from] tokio_rustls::rustls::Error),
 }

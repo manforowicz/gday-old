@@ -1,28 +1,27 @@
 use postcard::{from_bytes, to_slice};
 use serde::{Deserialize, Serialize};
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use crate::Error;
 
-
+pub type RoomId = [u8; 6];
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub enum ClientMessage {
     /// Request the server to create a room
     CreateRoom,
     /// (room_id, user is creator of room?, private contact)
-    SendContact([u8; 6], bool, Option<SocketAddr>),
+    SendContact(RoomId, bool, Option<SocketAddr>),
 
     /// (room_id, user is creator of room?)
-    DoneSending([u8; 6], bool),
+    DoneSending(RoomId, bool),
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub enum ServerMessage {
     /// Room successfully created
     /// (room_password, user_id)
-    RoomCreated([u8; 6]),
+    RoomCreated(RoomId),
     /// (full contact info of peer)
     SharePeerContacts(FullContact),
     SyntaxError,
@@ -37,26 +36,10 @@ pub struct Contact {
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
 pub struct FullContact {
-    pub private_v6: Option<SocketAddrV6>,
-    pub public_v6: Option<SocketAddrV6>,
-    pub private_v4: Option<SocketAddrV4>,
-    pub public_v4: Option<SocketAddrV4>,
+    pub private: Contact,
+    pub public: Contact,
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
-pub enum PeerMessage<'a> {
-    Text(&'a str),
-    Offer(Vec<FileMeta>),
-    Accept(Vec<bool>),
-    FileChunk(&'a [u8]),
-    DoneSending,
-}
-
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
-pub struct FileMeta {
-    pub path: PathBuf,
-    pub size: u64,
-}
 
 pub async fn deserialize_from<'a, T: AsyncReadExt + Unpin, U: Deserialize<'a>>(
     stream: &mut T,

@@ -1,4 +1,4 @@
-use crate::protocol::FullContact;
+use crate::protocol::{FullContact, RoomId};
 use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -16,14 +16,14 @@ struct Client {
 #[derive(Clone, Default)]
 pub struct State {
     /// Maps room_id to clients
-    rooms: Arc<Mutex<HashMap<[u8; 6], [Client; 2]>>>,
+    rooms: Arc<Mutex<HashMap<RoomId, [Client; 2]>>>,
 }
 
 #[derive(Error, Debug)]
 #[error("There is no room with this room_id")]
 pub struct NoSuchRoomExists;
 
-fn generate_room_id() -> [u8; 6] {
+fn generate_room_id() -> RoomId {
     let mut rng = rand::thread_rng();
     let characters = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let mut id = [0; 6];
@@ -35,7 +35,7 @@ fn generate_room_id() -> [u8; 6] {
 }
 
 impl State {
-    pub fn create_room(&mut self) -> [u8; 6] {
+    pub fn create_room(&mut self) -> RoomId {
         let mut rooms = self.rooms.lock().unwrap();
 
         let mut room_id = generate_room_id();
@@ -51,7 +51,7 @@ impl State {
 
     pub fn update_client(
         &mut self,
-        room_id: [u8; 6],
+        room_id: RoomId,
         is_creator: bool,
         endpoint: SocketAddr,
         public: bool,
@@ -60,23 +60,18 @@ impl State {
         let room = rooms.get_mut(&room_id).ok_or(NoSuchRoomExists)?;
         let contact = &mut room[usize::from(is_creator)].contact;
 
-        if public {
-            match endpoint {
-                SocketAddr::V6(addr) => {
-                    contact.public_v6 = Some(addr);
-                }
-                SocketAddr::V4(addr) => {
-                    contact.public_v4 = Some(addr);
-                }
-            }
+        let contact = if public {
+            &mut contact.public
         } else {
-            match endpoint {
-                SocketAddr::V6(addr) => {
-                    contact.private_v6 = Some(addr);
-                }
-                SocketAddr::V4(addr) => {
-                    contact.private_v4 = Some(addr);
-                }
+            &mut contact.private
+        };
+
+        match endpoint {
+            SocketAddr::V6(addr) => {
+                contact.v6 = Some(addr);
+            }
+            SocketAddr::V4(addr) => {
+                contact.v4 = Some(addr);
             }
         };
 
@@ -86,7 +81,7 @@ impl State {
     /// Assumes that client id exists
     pub fn set_client_done(
         &mut self,
-        room_id: [u8; 6],
+        room_id: RoomId,
         is_creator: bool,
     ) -> Result<oneshot::Receiver<FullContact>, NoSuchRoomExists> {
         let mut rooms = self.rooms.lock().unwrap();
@@ -117,7 +112,7 @@ impl State {
         Ok(rx)
     }
 
-    fn room_timeout(&self, room_id: [u8; 6]) {
+    fn room_timeout(&self, room_id: RoomId) {
         let state = self.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(60 * 10)).await;
