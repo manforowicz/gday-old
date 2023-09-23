@@ -1,4 +1,4 @@
-use postcard::{from_bytes, to_slice};
+use postcard::{from_bytes, to_slice, to_stdvec};
 use serde::{Deserialize, Serialize};
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -55,6 +55,22 @@ pub async fn deserialize_from<'a, T: AsyncReadExt + Unpin, U: Deserialize<'a>>(
     Ok(from_bytes(tmp_buf)?)
 }
 
+pub async fn dynamic_deserialize_from<'a, T: AsyncReadExt + Unpin, U: Deserialize<'a>>(
+    stream: &mut T,
+    tmp_buf: &'a mut Vec<u8>,
+) -> Result<U, Error> {
+    let length = stream.read_u32().await? as usize;
+
+
+    if tmp_buf.len() < length {
+        tmp_buf.resize(length, 0);
+    }
+
+    stream.read_exact(&mut tmp_buf[0..length]).await?;
+    Ok(from_bytes(tmp_buf)?)
+}
+
+
 pub async fn serialize_into<T: AsyncWriteExt + Unpin, U: Serialize>(
     stream: &mut T,
     msg: &U,
@@ -64,4 +80,14 @@ pub async fn serialize_into<T: AsyncWriteExt + Unpin, U: Serialize>(
     let len_bytes = u32::try_from(len)?.to_be_bytes();
     tmp_buf[0..4].copy_from_slice(&len_bytes);
     Ok(stream.write_all(&tmp_buf[0..4 + len]).await?)
+}
+
+pub async fn dynamic_serialize_into<T: AsyncWriteExt + Unpin, U: Serialize>(
+    stream: &mut T,
+    msg: &U,
+) -> Result<(), Error> {
+    let mut msg = to_stdvec(&msg)?;
+    let len = u32::try_from(msg.len())?.to_be_bytes();
+    msg.splice(0..0, len);
+    Ok(stream.write_all(&msg).await?)
 }

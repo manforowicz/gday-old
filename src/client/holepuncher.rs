@@ -89,7 +89,7 @@ async fn try_accept(
     local: impl Into<SocketAddr>,
     peer_id: PeerSecret,
     is_creator: bool,
-) -> Result<PeerConnection, std::io::Error> {
+) -> std::io::Result<PeerConnection> {
     let local = local.into();
     let local_socket = get_local_socket(local)?;
     let listener = local_socket.listen(1024)?;
@@ -146,7 +146,7 @@ fn get_verification_code(key: [u8; 32], is_creator: bool) -> [u8; 32] {
         .into()
 }
 
-fn get_local_socket(local_addr: SocketAddr) -> Result<TcpSocket, std::io::Error> {
+fn get_local_socket(local_addr: SocketAddr) -> std::io::Result<TcpSocket> {
     let socket = match local_addr {
         SocketAddr::V6(_) => TcpSocket::new_v6()?,
         SocketAddr::V4(_) => TcpSocket::new_v4()?,

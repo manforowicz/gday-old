@@ -9,24 +9,40 @@ use std::{
     pin::Pin,
     task::{ready, Context, Poll},
 };
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf},
+    net::tcp::{OwnedReadHalf, OwnedWriteHalf},
+};
+
+use super::contact_share::PeerConnection;
+
+pub async fn new(
+    connection: PeerConnection,
+) -> std::io::Result<(EncryptedReader, EncryptedWriter)> {
+    let (read, write) = connection.stream.into_split();
+
+    let writer = EncryptedWriter::new(write, connection.shared_secret).await?;
+    let reader = EncryptedReader::new(read, connection.shared_secret).await?;
+
+    Ok((reader, writer))
+}
 
 #[pin_project]
-pub struct Reader<R: AsyncRead + Unpin> {
+pub struct EncryptedReader {
     #[pin]
-    reader: R,
+    reader: OwnedReadHalf,
     decryptor: DecryptorLE31<ChaCha20Poly1305>,
     cipher_buf: VecDeque<u8>,
     decryption_space: Vec<u8>,
     plaintext: VecDeque<u8>,
 }
 
-impl<R: AsyncRead + Unpin> Reader<R> {
-    pub async fn new(mut reader: R, shared_secret: [u8; 32]) -> Result<Self, std::io::Error> {
+impl EncryptedReader {
+    async fn new(mut reader: OwnedReadHalf, shared_key: [u8; 32]) -> std::io::Result<Self> {
         let mut nonce = [0; 8];
         reader.read_exact(&mut nonce).await?;
 
-        let decryptor = DecryptorLE31::new(&shared_secret.into(), &nonce.into());
+        let decryptor = DecryptorLE31::new(&shared_key.into(), &nonce.into());
         Ok(Self {
             reader,
             decryptor,
@@ -37,12 +53,9 @@ impl<R: AsyncRead + Unpin> Reader<R> {
     }
 }
 
-impl<R: AsyncRead + Unpin> Reader<R> {
+impl EncryptedReader {
     /// Return bool is true when EOF is reached.
-    fn read_to_local_buf(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Result<bool, std::io::Error> {
+    fn read_to_local_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> std::io::Result<bool> {
         let this = self.project();
         let old_len = this.cipher_buf.len();
 
@@ -85,7 +98,7 @@ impl<R: AsyncRead + Unpin> Reader<R> {
     }
 }
 
-impl<R: AsyncRead + Unpin> AsyncRead for Reader<R> {
+impl AsyncRead for EncryptedReader {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -122,20 +135,20 @@ impl<R: AsyncRead + Unpin> AsyncRead for Reader<R> {
 }
 
 #[pin_project]
-pub struct Writer<W: AsyncWrite + Unpin> {
+pub struct EncryptedWriter {
     #[pin]
-    writer: W,
+    writer: OwnedWriteHalf,
     encryptor: EncryptorLE31<ChaCha20Poly1305>,
     encryption_space: Vec<u8>,
     ciphertext: VecDeque<u8>,
 }
 
-impl<W: AsyncWrite + Unpin> Writer<W> {
-    pub async fn new(mut writer: W, shared_secret: [u8; 32]) -> Result<Self, std::io::Error> {
+impl EncryptedWriter {
+    async fn new(mut writer: OwnedWriteHalf, shared_key: [u8; 32]) -> std::io::Result<Self> {
         let nonce: [u8; 8] = rand::random();
 
         writer.write_all(&nonce).await?;
-        let encryptor = EncryptorLE31::new(&shared_secret.into(), &nonce.into());
+        let encryptor = EncryptorLE31::new(&shared_key.into(), &nonce.into());
         Ok(Self {
             writer,
             encryptor,
@@ -164,12 +177,12 @@ impl<W: AsyncWrite + Unpin> Writer<W> {
     }
 }
 
-impl<W: AsyncWrite + Unpin> AsyncWrite for Writer<W> {
+impl AsyncWrite for EncryptedWriter {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-    ) -> Poll<Result<usize, std::io::Error>> {
+    ) -> Poll<std::io::Result<usize>> {
         ready!(self.as_mut().flush_local_buffer(cx))?;
 
         let mut this = self.project();
@@ -195,19 +208,13 @@ impl<W: AsyncWrite + Unpin> AsyncWrite for Writer<W> {
         Poll::Ready(Ok(buf.len()))
     }
 
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<(), std::io::Error>> {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         ready!(self.as_mut().flush_local_buffer(cx))?;
         let this = self.project();
         this.writer.poll_flush(cx)
     }
 
-    fn poll_shutdown(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<(), std::io::Error>> {
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         ready!(self.as_mut().poll_flush(cx))?;
         let this = self.project();
         this.writer.poll_shutdown(cx)

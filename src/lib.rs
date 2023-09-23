@@ -28,8 +28,9 @@ pub enum Error {
     #[error("Peer cryptographical error")]
     Cyrptographical,
 
-    #[error("Double check the first 6 characters of your password!")]
+    #[error("Double check the first 6 characters of your password! {0:?}")]
     InvalidServerReply(protocol::ServerMessage),
+
     #[error("Couldn't connect to peer")]
     PeerConnectFailed,
 
@@ -45,4 +46,11 @@ pub enum Error {
 
     #[error("Rustls error")]
     Rustls(#[from] tokio_rustls::rustls::Error),
+
+
+    #[error("Invalid utf-8")]
+    InvalidUtf8(#[from] std::str::Utf8Error),
+
+    #[error("Readline errror: {0}")]
+    Readline(#[from] rustyline_async::ReadlineError)
 }
