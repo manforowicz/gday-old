@@ -53,7 +53,6 @@ pub async fn creator_run(
         let msg = Message::FileOffer(Some(metas));
         serialize_into(writer, &msg).await?;
 
-
         let mut tmp_buf = Vec::new();
         let reply = deserialize_from(reader, &mut tmp_buf).await?;
 
@@ -85,12 +84,15 @@ pub async fn not_creator_run(
     mut writer: &mut impl AsyncWritable,
 ) -> Result<(), Error> {
     let mut tmp_buf = Vec::new();
+    println!("Waiting on message!");
     let msg: Message = deserialize_from(&mut reader, &mut tmp_buf).await?;
+    println!("Received messsge at least :?");
 
     if let Message::FileOffer(files) = msg {
         if let Some(files) = files {
             let chosen = file_dialog::confirm_receive(&files)?;
             let msg = Message::FileAccept(chosen.clone());
+            serialize_into(&mut writer, &msg).await?;
 
             let files_to_receive: Vec<FileMeta> = files
                 .into_iter()
@@ -99,14 +101,12 @@ pub async fn not_creator_run(
                 .map(|(file, _accepted)| file)
                 .collect();
 
-            serialize_into(&mut writer, &msg).await?;
+            
             file_transfer::receive_files(&mut reader, files_to_receive).await?;
         }
     } else {
         return Err(Error::UnexpectedMessge(msg));
     }
 
-    chat::start_chat(reader, writer).await?;
-
-    Ok(())
+    chat::start_chat(reader, writer).await
 }

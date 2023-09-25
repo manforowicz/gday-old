@@ -47,6 +47,9 @@ pub async fn deserialize_from<'a, T: AsyncReadExt + Unpin, U: Deserialize<'a>>(
         tmp_buf.resize(length, 0);
     }
 
+    println!("About to read message");
+
     stream.read_exact(&mut tmp_buf[0..length]).await?;
+    println!("read message");
     Ok(from_bytes(tmp_buf)?)
 }
