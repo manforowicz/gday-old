@@ -41,6 +41,7 @@ pub fn confirm_receive(files: &[FileMeta]) -> Result<Vec<bool>, std::io::Error> 
     println!("2. Accept only files with new path or changed size. (New files will overwrite old files with the same path.)");
     println!("3. Accept all files, overwritting any old files with the same path.");
     print!("Choose an option (1, 2, or 3): ");
+    std::io::stdout().flush()?;
 
     let mut response = String::new();
     std::io::stdin().read_line(&mut response)?;

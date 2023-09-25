@@ -98,11 +98,11 @@ async fn start_connection() -> (EncryptedReader, EncryptedWriter) {
     let peer_secret = random_peer_secret();
     let mut password = room_id.into_iter().chain(peer_secret).collect::<Vec<u8>>();
 
-    password.insert(4, b'-');
-    password.insert(8, b'-');
+    password.insert(3, b'-');
+    password.insert(6, b'-');
 
     let password = String::from_utf8(password).unwrap();
-    println!("Have your peer run: gday join {password}");
+    println!("Have your peer run: \"gday join {password}\". Password is case-insensitive.");
 
     establish_peer_connection(sharer, peer_secret).await
 }

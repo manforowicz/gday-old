@@ -15,7 +15,7 @@ pub async fn send_files(
 
     let progress = create_progress_bar(size);
 
-    let mut buf = vec![0; 1_000_000];
+    let mut buf = vec![0; 1_000];
     for meta in files {
         let mut file = File::open(meta.local_path).await?;
         loop {
@@ -38,9 +38,11 @@ pub async fn receive_files(
     let size: u64 = files.iter().map(|meta| meta.size).sum();
     let progress = create_progress_bar(size);
 
-    let mut buf = vec![0; 1_000_000];
+    let mut buf = vec![0; 1_000];
     for meta in files {
         let path = Path::new(RECEIVED_FILE_FOLDER).join(meta.path);
+        let prefix = path.parent().unwrap_or(Path::new(""));
+        std::fs::create_dir_all(prefix)?;
         let mut file = File::create(path).await?;
         let mut bytes_left = meta.size;
         while bytes_left != 0 {
