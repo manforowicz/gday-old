@@ -32,7 +32,7 @@ async fn chat_listen(
         let bytes_read = reader.read(&mut tmp_buf).await?;
         let text = std::str::from_utf8(&tmp_buf[..bytes_read])?;
         for line in text.lines() {
-            write!(terminal, "peer: {line}")?;
+            writeln!(terminal, "peer: {line}")?;
         }
     }
 }
@@ -48,7 +48,7 @@ async fn chat_talk(
         match event {
             ReadlineEvent::Line(text) => {
                 writer.write_all(text.as_bytes()).await?;
-                write!(terminal, "you: {text}")?;
+                writeln!(terminal, "you: {text}")?;
             }
             _ => {
                 return Ok(());

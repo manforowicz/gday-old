@@ -57,7 +57,7 @@ impl EncryptedReader {
         if bytes_read == 0 {
             match poll {
                 Poll::Pending => return Ok(false),
-                Poll::Ready(_) => return Ok(true),
+                Poll::Ready(()) => return Ok(true),
             }
         }
 
