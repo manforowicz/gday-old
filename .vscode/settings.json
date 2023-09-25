@@ -1,0 +1,5 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "./gday-hole-punch/Cargo.toml"
+    ]
+}
