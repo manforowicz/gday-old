@@ -6,7 +6,10 @@ use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+#[cfg(feature = "server")]
 pub mod server;
+
+#[cfg(feature = "client")]
 pub mod client;
 
 pub type RoomId = [u8; 6];

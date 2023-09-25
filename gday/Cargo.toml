@@ -9,5 +9,7 @@ edition = "2021"
 clap = { version = "4.4.4", features = ["derive"] }
 gday-chat = { version = "0.1.0", path = "../gday-chat" }
 gday-encryption = { version = "0.1.0", path = "../gday-encryption" }
-gday-hole-punch = { version = "0.1.0", path = "../gday-hole-punch" }
+gday-hole-punch = { version = "0.1.0", path = "../gday-hole-punch", features = [
+    "client",
+] }
 tokio = "1.32.0"

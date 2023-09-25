@@ -1,4 +1,4 @@
-use crate::protocol::FileMeta;
+use crate::{protocol::{FileMeta, LocalFileMeta}, RECEIVED_FILE_FOLDER};
 use indicatif::HumanBytes;
 use std::{
     fs::File,
@@ -55,7 +55,7 @@ pub fn confirm_receive(files: &[FileMeta]) -> Result<Vec<bool>, std::io::Error> 
 }
 
 fn file_exists(meta: &FileMeta) -> bool {
-    let path = PathBuf::from("gday_received").join(&meta.path);
+    let path = PathBuf::from(RECEIVED_FILE_FOLDER).join(&meta.path);
     if let Ok(file) = File::open(path) {
         if let Ok(local_meta) = file.metadata() {
             if local_meta.len() == meta.size {
@@ -78,10 +78,10 @@ pub enum ConfirmSendError {
     UserCancelledSend,
 }
 
-pub fn confirm_send(paths: &[PathBuf]) -> Result<Vec<FileMeta>, ConfirmSendError> {
+pub fn confirm_send(paths: &[PathBuf]) -> Result<Vec<LocalFileMeta>, ConfirmSendError> {
     for (i, path1) in paths.iter().enumerate() {
         let canonical1 = path1.canonicalize()?;
-        for path2 in &paths[i+1..] {
+        for path2 in &paths[i + 1..] {
             let canonical2 = path2.canonicalize()?;
             if canonical1.starts_with(&canonical2) || canonical2.starts_with(&canonical1) {
                 return Err(ConfirmSendError::OverlappingPaths(
@@ -97,9 +97,9 @@ pub fn confirm_send(paths: &[PathBuf]) -> Result<Vec<FileMeta>, ConfirmSendError
     let size: u64 = files.iter().map(|file| file.size).sum();
     println!("{} files:", files.len());
     for file in &files {
-        println!("{:?} ({})", file.path, HumanBytes(file.size));
+        println!("{} ({})", file.public_path.display(), HumanBytes(file.size));
     }
-    println!("Total size: {}\n", HumanBytes(size));
+    println!("\nTotal size: {}", HumanBytes(size));
     print!("Do you want to send these files? (y/n): ");
     std::io::stdout().flush()?;
     let mut response = String::new();
@@ -112,9 +112,9 @@ pub fn confirm_send(paths: &[PathBuf]) -> Result<Vec<FileMeta>, ConfirmSendError
     Ok(files)
 }
 
-fn get_file_metadatas(paths: &[PathBuf]) -> std::io::Result<Vec<FileMeta>> {
+fn get_file_metadatas(paths: &[PathBuf]) -> std::io::Result<Vec<LocalFileMeta>> {
     let mut files = Vec::new();
-    
+
     for path in paths {
         let path = path.canonicalize()?;
         get_file_metadatas_helper(&path, &path, &mut files)?;
@@ -125,7 +125,7 @@ fn get_file_metadatas(paths: &[PathBuf]) -> std::io::Result<Vec<FileMeta>> {
 fn get_file_metadatas_helper(
     top_path: &Path,
     path: &Path,
-    files: &mut Vec<FileMeta>,
+    files: &mut Vec<LocalFileMeta>,
 ) -> std::io::Result<()> {
     let path = path.canonicalize()?;
     let meta = std::fs::metadata(&path)?;
@@ -136,9 +136,10 @@ fn get_file_metadatas_helper(
             get_file_metadatas_helper(top_path, &entry?.path(), files)?;
         }
     } else if meta.is_file() && File::open(&path).is_ok() {
-        let local_path = path.strip_prefix(top_path).unwrap().to_path_buf();
-        let file_meta = FileMeta {
-            path: local_path,
+        let public_path = path.strip_prefix(top_path).unwrap().to_path_buf();
+        let file_meta = LocalFileMeta {
+            local_path: path,
+            public_path,
             size: meta.len(),
         };
         files.push(file_meta);

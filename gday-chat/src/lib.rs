@@ -5,9 +5,12 @@ mod protocol;
 
 use std::str::Utf8Error;
 
-use protocol::{deserialize_from, serialize_into, FileMeta, Message};
+use protocol::{deserialize_from, serialize_into, FileMeta, Message, LocalFileMeta};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncWrite};
+
+
+const RECEIVED_FILE_FOLDER: &str = "gday_received/";
 
 pub trait AsyncReadable: AsyncRead + Send + Unpin {}
 impl<T: AsyncRead + Send + Unpin> AsyncReadable for T {}
@@ -41,19 +44,23 @@ pub enum Error {
 pub async fn creator_run(
     reader: &mut impl AsyncReadable,
     writer: &mut impl AsyncWritable,
-    files: Option<Vec<FileMeta>>,
+    files: Option<Vec<LocalFileMeta>>,
 ) -> Result<(), Error> {
-    let msg = &Message::FileOffer(files.clone());
-    serialize_into(writer, msg).await?;
 
     if let Some(files) = files {
+        let metas = files.iter().map(|file| FileMeta{path: file.public_path.clone(), size: file.size}).collect();
+
+        let msg = &Message::FileOffer(Some(metas));
+        serialize_into(writer, msg).await?;
+
+
         let mut tmp_buf = Vec::new();
         let reply = deserialize_from(reader, &mut tmp_buf).await?;
 
         if let Message::FileAccept(chosen) = reply {
             // ADD ASSERT TO ENSURE REPLY IS PROPER LENGTH
 
-            let files_to_send: Vec<FileMeta> = files
+            let files_to_send: Vec<LocalFileMeta> = files
                 .into_iter()
                 .zip(chosen.into_iter())
                 .filter(|(_file, accepted)| *accepted)
@@ -64,7 +71,11 @@ pub async fn creator_run(
         } else {
             return Err(Error::UnexpectedMessge(reply));
         }
+    } else {
+        let msg = &Message::FileOffer(None);
+        serialize_into(writer, msg).await?;
     }
+
 
     chat::start_chat(reader, writer).await
 }

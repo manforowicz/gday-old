@@ -13,6 +13,13 @@ pub struct FileMeta {
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+pub struct LocalFileMeta {
+    pub local_path: PathBuf,
+    pub public_path: PathBuf,
+    pub size: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub enum Message {
     FileOffer(Option<Vec<FileMeta>>),
     FileAccept(Vec<bool>),

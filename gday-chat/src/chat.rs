@@ -1,9 +1,15 @@
-use rustyline_async::{Readline, SharedWriter, ReadlineEvent};
-use tokio::{io::{AsyncWriteExt, AsyncReadExt}, try_join};
+use crate::{AsyncReadable, AsyncWritable, Error};
+use rustyline_async::{Readline, ReadlineEvent, SharedWriter};
 use std::io::Write;
-use crate::{Error, AsyncReadable, AsyncWritable};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    try_join,
+};
 
-pub async fn start_chat(reader: &mut impl AsyncReadable, writer: &mut impl AsyncWritable) -> Result<(), Error> {
+pub async fn start_chat(
+    reader: &mut impl AsyncReadable,
+    writer: &mut impl AsyncWritable,
+) -> Result<(), Error> {
     let (user_input, terminal) = Readline::new("> ".to_string()).unwrap();
 
     let terminal_clone = terminal.clone();
@@ -13,7 +19,6 @@ pub async fn start_chat(reader: &mut impl AsyncReadable, writer: &mut impl Async
 
     try_join!(future_a, future_b)?;
     Ok(())
-
 }
 
 async fn chat_listen(
@@ -28,7 +33,6 @@ async fn chat_listen(
         for line in text.lines() {
             write!(terminal, "peer: {line}")?;
         }
-        
     }
 }
 

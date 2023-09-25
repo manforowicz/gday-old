@@ -1,4 +1,6 @@
-use crate::protocol::FileMeta;
+use std::path::Path;
+
+use crate::{protocol::{FileMeta, LocalFileMeta}, RECEIVED_FILE_FOLDER};
 use indicatif::{ProgressBar, ProgressStyle};
 use tokio::{
     fs::File,
@@ -7,7 +9,7 @@ use tokio::{
 
 pub async fn send_files(
     writer: &mut (impl AsyncWrite + Unpin),
-    files: Vec<FileMeta>,
+    files: Vec<LocalFileMeta>,
 ) -> std::io::Result<()> {
     let size: u64 = files.iter().map(|meta| meta.size).sum();
 
@@ -15,7 +17,7 @@ pub async fn send_files(
 
     let mut buf = vec![0; 1_000_000];
     for meta in files {
-        let mut file = File::open(meta.path).await?;
+        let mut file = File::open(meta.local_path).await?;
         loop {
             let bytes_read = file.read(&mut buf).await?;
             if bytes_read == 0 {
@@ -38,10 +40,10 @@ pub async fn receive_files(
 
     let mut buf = vec![0; 1_000_000];
     for meta in files {
-        let mut file = File::create(meta.path).await?;
+        let path = Path::new(RECEIVED_FILE_FOLDER).join(meta.path);
+        let mut file = File::create(path).await?;
         let mut bytes_left = meta.size;
         while bytes_left != 0 {
-            #[allow(clippy::cast_possible_truncation)]
             let chunk_size = std::cmp::min(buf.len(), bytes_left as usize);
 
             let bytes_read = reader.read(&mut buf[..chunk_size]).await?;
