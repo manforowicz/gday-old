@@ -50,8 +50,8 @@ pub async fn creator_run(
     if let Some(files) = files {
         let metas = files.iter().map(|file| FileMeta{path: file.public_path.clone(), size: file.size}).collect();
 
-        let msg = &Message::FileOffer(Some(metas));
-        serialize_into(writer, msg).await?;
+        let msg = Message::FileOffer(Some(metas));
+        serialize_into(writer, &msg).await?;
 
 
         let mut tmp_buf = Vec::new();
@@ -72,8 +72,8 @@ pub async fn creator_run(
             return Err(Error::UnexpectedMessge(reply));
         }
     } else {
-        let msg = &Message::FileOffer(None);
-        serialize_into(writer, msg).await?;
+        let msg = Message::FileOffer(None);
+        serialize_into(writer, &msg).await?;
     }
 
 
