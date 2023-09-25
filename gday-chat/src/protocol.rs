@@ -1,10 +1,9 @@
-use std::path::PathBuf;
 use crate::Error;
+use std::path::PathBuf;
 
 use postcard::{from_bytes, to_stdvec};
-use serde::{Serialize, Deserialize};
-use tokio::io::{AsyncWriteExt, AsyncReadExt};
-
+use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct FileMeta {
@@ -25,8 +24,6 @@ pub enum Message {
     FileAccept(Vec<bool>),
 }
 
-
-
 pub async fn serialize_into<T: AsyncWriteExt + Unpin, U: Serialize>(
     stream: &mut T,
     msg: &U,
@@ -46,10 +43,6 @@ pub async fn deserialize_from<'a, T: AsyncReadExt + Unpin, U: Deserialize<'a>>(
     if tmp_buf.len() < length {
         tmp_buf.resize(length, 0);
     }
-
-    println!("About to read message");
-
     stream.read_exact(&mut tmp_buf[0..length]).await?;
-    println!("read message");
     Ok(from_bytes(tmp_buf)?)
 }

@@ -117,7 +117,8 @@ fn get_file_metadatas(paths: &[PathBuf]) -> std::io::Result<Vec<LocalFileMeta>> 
 
     for path in paths {
         let path = path.canonicalize()?;
-        get_file_metadatas_helper(&path, &path, &mut files)?;
+        let parent = &path.parent().unwrap_or(Path::new(""));
+        get_file_metadatas_helper(parent, &path, &mut files)?;
     }
     Ok(files)
 }
@@ -128,10 +129,10 @@ fn get_file_metadatas_helper(
     files: &mut Vec<LocalFileMeta>,
 ) -> std::io::Result<()> {
     let path = path.canonicalize()?;
-    let meta = std::fs::metadata(&path)?;
+    let meta = path.metadata()?;
 
     if meta.is_dir() {
-        let entries = std::fs::read_dir(path)?;
+        let entries = path.read_dir()?;
         for entry in entries {
             get_file_metadatas_helper(top_path, &entry?.path(), files)?;
         }
