@@ -94,7 +94,10 @@ impl AsyncRead for EncryptedReader {
             if self.plaintext.is_empty() {
                 if is_eof {
                     return Poll::Ready(Ok(()));
+                } else if self.cipher_buf.is_empty() {
+                    return Poll::Pending;
                 } else {
+                    cx.waker().wake_by_ref();
                     return Poll::Pending;
                 }
             }

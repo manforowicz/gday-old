@@ -2,11 +2,16 @@ use tokio::net::TcpStream;
 
 mod reader;
 mod writer;
-pub use reader::EncryptedReader;
+mod reader_progress;
+mod writer_progress;
+pub use reader_progress::EncryptedReader;
 
-pub use writer::EncryptedWriter;
+pub use writer_progress::EncryptedWriter;
 
 const MAX_CHUNK_SIZE: usize = 100_000;
+
+
+const BUF_CAPACITY: usize = 10_000;
 
 pub async fn new(
     tcp_stream: TcpStream,
@@ -19,3 +24,4 @@ pub async fn new(
 
     Ok((reader, writer))
 }
+
