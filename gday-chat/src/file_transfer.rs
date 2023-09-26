@@ -15,7 +15,7 @@ pub async fn send_files(
 
     let progress = create_progress_bar(size);
 
-    let mut buf = vec![0; 1_000];
+    let mut buf = vec![0; 11_000];
     for meta in files {
         let mut file = File::open(meta.local_path).await?;
         loop {
@@ -38,7 +38,9 @@ pub async fn receive_files(
     let size: u64 = files.iter().map(|meta| meta.size).sum();
     let progress = create_progress_bar(size);
 
-    let mut buf = vec![0; 1_000];
+    println!("A: Started receive.");
+
+    let mut buf = vec![0; 10_000];
     for meta in files {
         let path = Path::new(RECEIVED_FILE_FOLDER).join(meta.path);
         let prefix = path.parent().unwrap_or(Path::new(""));
@@ -48,9 +50,15 @@ pub async fn receive_files(
         while bytes_left != 0 {
             let chunk_size = std::cmp::min(buf.len(), bytes_left as usize);
 
+            println!("B: beggining byte read");
+
             let bytes_read = reader.read(&mut buf[..chunk_size]).await?;
+
+            println!("C: Some bytes read");
             bytes_left -= bytes_read as u64;
             file.write_all(&buf[0..bytes_read]).await?;
+
+            println!("D: Bytes written to disk");
 
             progress.inc(bytes_read as u64);
         }
@@ -59,6 +67,6 @@ pub async fn receive_files(
 }
 
 fn create_progress_bar(bytes: u64) -> ProgressBar {
-    let style = ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})").unwrap();
+    let style = ProgressStyle::with_template("[{bar}] ({bytes}/{total_bytes}) ({bytes_per_sec}) ({eta})").unwrap();
     ProgressBar::new(bytes).with_style(style)
 }

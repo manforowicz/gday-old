@@ -1,7 +1,4 @@
-use chacha20poly1305::{
-    aead::stream::DecryptorLE31,
-    ChaCha20Poly1305,
-};
+use chacha20poly1305::{aead::stream::DecryptorLE31, ChaCha20Poly1305};
 use pin_project::pin_project;
 use std::{
     collections::VecDeque,
@@ -25,7 +22,10 @@ pub struct EncryptedReader {
 }
 
 impl EncryptedReader {
-    pub(super) async fn new(mut reader: OwnedReadHalf, shared_key: [u8; 32]) -> std::io::Result<Self> {
+    pub(super) async fn new(
+        mut reader: OwnedReadHalf,
+        shared_key: [u8; 32],
+    ) -> std::io::Result<Self> {
         let mut nonce = [0; 8];
         reader.read_exact(&mut nonce).await?;
 
@@ -44,11 +44,13 @@ impl EncryptedReader {
         let this = self.project();
         let old_len = this.cipher_buf.len();
 
-        this.cipher_buf.resize(old_len + 8000, 0);
-
+        this.cipher_buf.resize(old_len + 100, 0);
+        
         let mut read_buf = ReadBuf::new(&mut this.cipher_buf.make_contiguous()[old_len..]);
 
+        println!("calling inner poll read");
         let poll = this.reader.poll_read(cx, &mut read_buf)?;
+        println!("inner poll read success");
 
         let bytes_read = read_buf.filled().len();
 
@@ -60,24 +62,31 @@ impl EncryptedReader {
                 Poll::Ready(()) => return Ok(true),
             }
         }
+        println!("Making contiguious");
+        let cipher_buf = this.cipher_buf.make_contiguous();
+        println!("made contigous ;P");
 
-        let cipher_buf_contiguous = this.cipher_buf.make_contiguous();
-
-        if let Some(header) = cipher_buf_contiguous.get(0..4) {
+        if let Some(header) = cipher_buf.get(0..4) {
             let length = u32::from_be_bytes(header.try_into().unwrap()) as usize;
-
-            if let Some(ciphertext) = cipher_buf_contiguous.get(4..length) {
+            println!("hello");
+            if let Some(ciphertext) = cipher_buf.get(4..length) {
+                println!("bolek");
                 this.decryption_space.clear();
+                println!("yolo");
                 this.decryption_space.extend_from_slice(ciphertext);
+                println!("decryption started");
                 this.decryptor
                     .decrypt_next_in_place(&[], this.decryption_space)
                     .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Decryption error"))?;
+                println!("Decrypteion ended");
 
                 this.plaintext.extend(this.decryption_space.iter());
 
                 this.cipher_buf.drain(0..length);
             }
         }
+
+        println!("mello");
 
         Ok(false)
     }
@@ -89,13 +98,15 @@ impl AsyncRead for EncryptedReader {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
+        println!("\npoll read called");
         if self.plaintext.len() < buf.remaining() {
             let is_eof = self.as_mut().read_to_local_buf(cx)?;
             if self.plaintext.is_empty() {
                 if is_eof {
                     return Poll::Ready(Ok(()));
+                } else {
+                    return Poll::Pending;
                 }
-                return Poll::Pending;
             }
         }
 
@@ -113,7 +124,11 @@ impl AsyncRead for EncryptedReader {
             buf.put_slice(&a[0..len]);
         }
 
+        
+
         this.plaintext.drain(0..len);
+
+        println!("poll read returning");
 
         Poll::Ready(Ok(()))
     }
