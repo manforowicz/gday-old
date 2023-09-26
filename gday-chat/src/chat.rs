@@ -11,12 +11,11 @@ pub async fn start_chat(
     writer: &mut impl AsyncWritable,
 ) -> Result<(), Error> {
     println!("CHAT MOSTLY STARTED!");
-    let (user_input, terminal) = Readline::new("> ".to_string()).unwrap();
+    let (user_input, terminal) = Readline::new("you: ".to_string()).unwrap();
 
-    let terminal_clone = terminal.clone();
 
-    let future_a = chat_listen(reader, terminal_clone);
-    let future_b = chat_talk(writer, user_input, terminal);
+    let future_a = chat_listen(reader, terminal);
+    let future_b = chat_talk(writer, user_input);
 
     try_join!(future_a, future_b)?;
     Ok(())
@@ -39,16 +38,17 @@ async fn chat_listen(
 
 async fn chat_talk(
     writer: &mut impl AsyncWritable,
-    mut user_input: Readline,
-    mut terminal: SharedWriter,
+    mut user_input: Readline
 ) -> Result<(), Error> {
     loop {
         let event = user_input.readline().await?;
 
         match event {
             ReadlineEvent::Line(text) => {
-                writer.write_all(text.as_bytes()).await?;
-                writeln!(terminal, "you: {text}")?;
+                if !text.trim().is_empty() {
+                    writer.write_all(text.as_bytes()).await?;
+                    user_input.add_history_entry(text);
+                }
             }
             _ => {
                 return Ok(());

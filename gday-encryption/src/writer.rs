@@ -79,8 +79,8 @@ impl AsyncWrite for EncryptedWriter {
                 .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Message too long"))?;
     
             let len = (len + 4).to_be_bytes();
-    
-            this.encryption_space.splice(0..0, len);
+
+            this.ciphertext.extend(len);
             this.ciphertext.extend(&this.encryption_space[..]);
         }
 

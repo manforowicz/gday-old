@@ -46,7 +46,7 @@ impl EncryptedReader {
         let this = self.project();
         let old_len = this.cipher_buf.len();
 
-        this.cipher_buf.resize(old_len + MAX_CHUNK_SIZE + 4, 0);
+        this.cipher_buf.resize(old_len + MAX_CHUNK_SIZE + 260, 0);
         
         let mut read_buf = ReadBuf::new(&mut this.cipher_buf.make_contiguous()[old_len..]);
 

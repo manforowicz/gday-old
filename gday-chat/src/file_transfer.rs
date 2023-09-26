@@ -63,6 +63,6 @@ pub async fn receive_files(
 }
 
 fn create_progress_bar(bytes: u64) -> ProgressBar {
-    let style = ProgressStyle::with_template("[{bar}] ({bytes}/{total_bytes}) ({bytes_per_sec}) ({eta})").unwrap();
+    let style = ProgressStyle::with_template("[{bar}] {bytes}/{total_bytes} | {bytes_per_sec} | time left: {eta}").unwrap();
     ProgressBar::new(bytes).with_style(style)
 }
