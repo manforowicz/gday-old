@@ -69,15 +69,19 @@ impl AsyncWrite for EncryptedWriter {
         let this = self.as_mut().project();
 
         let bytes_taken = std::cmp::min(buf.len(), this.bytes.spare_capacity_mut().len());
-
+        
+        this.bytes.extend_from_slice(&[0, 0, 0, 0]);
         this.bytes.extend_from_slice(&buf[0..bytes_taken]);
+        let mut encryption_space = this.bytes.split_off(4);
 
         this.encryptor
-            .encrypt_next_in_place(&[], this.bytes)
+            .encrypt_next_in_place(&[], &mut encryption_space)
             .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Decryption error"))?;
         
-        ready!(self.as_mut().flush_local_buffer(cx))?;
+        let len = u32::try_from(this.bytes.len()).unwrap().to_be_bytes();
+        this.bytes[0..4].copy_from_slice(&len);
 
+        ready!(self.as_mut().flush_local_buffer(cx))?;
         Poll::Ready(Ok(bytes_taken))
     }
 

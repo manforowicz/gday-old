@@ -20,7 +20,8 @@ pub struct EncryptedReader {
     #[pin]
     reader: OwnedReadHalf,
     decryptor: DecryptorLE31<ChaCha20Poly1305>,
-    bytes: BytesMut,
+    decrypted: BytesMut,
+    encrypted: BytesMut,
 }
 
 impl EncryptedReader {
@@ -32,11 +33,13 @@ impl EncryptedReader {
         reader.read_exact(&mut nonce).await?;
 
         let decryptor = DecryptorLE31::new(&shared_key.into(), &nonce.into());
-        let bytes = BytesMut::with_capacity(BUF_CAPACITY);
+        let mut decrypted = BytesMut::with_capacity(BUF_CAPACITY);
+        let encrypted = decrypted.split_off(0);
         Ok(Self {
             reader,
             decryptor,
-            bytes
+            decrypted,
+            encrypted
         })
     }
 }
@@ -60,8 +63,7 @@ impl AsyncRead for EncryptedReader {
             let poll = this.reader.poll_read(cx, &mut tmp)?;
             let bytes_read = tmp.filled().len();
             unsafe { encrypted.set_len(bytes_read) }
-            this.decryptor.decrypt_next_in_place(&[], &mut encrypted)
-                .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Decryption error"))?;
+            this.decryptor.decrypt_next_in_place(&[], &mut encrypted).unwrap();
             this.bytes.unsplit(encrypted);
 
             if poll == Poll::Pending && this.bytes.remaining() == 0 {

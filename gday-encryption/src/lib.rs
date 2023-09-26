@@ -2,9 +2,8 @@ use tokio::net::TcpStream;
 
 mod reader;
 mod writer;
-mod reader_progress;
 mod writer_progress;
-pub use reader_progress::EncryptedReader;
+pub use reader::EncryptedReader;
 
 pub use writer_progress::EncryptedWriter;
 
