@@ -6,6 +6,8 @@ pub use reader::EncryptedReader;
 
 pub use writer::EncryptedWriter;
 
+const MAX_CHUNK_SIZE: usize = 100_000;
+
 pub async fn new(
     tcp_stream: TcpStream,
     shared_secret: [u8; 32],

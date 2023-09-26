@@ -15,7 +15,7 @@ pub async fn send_files(
 
     let progress = create_progress_bar(size);
 
-    let mut buf = vec![0; 11_000];
+    let mut buf = vec![0; 10_000];
     for meta in files {
         let mut file = File::open(meta.local_path).await?;
         loop {
@@ -38,7 +38,6 @@ pub async fn receive_files(
     let size: u64 = files.iter().map(|meta| meta.size).sum();
     let progress = create_progress_bar(size);
 
-    println!("A: Started receive.");
 
     let mut buf = vec![0; 10_000];
     for meta in files {
@@ -50,15 +49,12 @@ pub async fn receive_files(
         while bytes_left != 0 {
             let chunk_size = std::cmp::min(buf.len(), bytes_left as usize);
 
-            println!("B: beggining byte read");
 
             let bytes_read = reader.read(&mut buf[..chunk_size]).await?;
 
-            println!("C: Some bytes read");
             bytes_left -= bytes_read as u64;
             file.write_all(&buf[0..bytes_read]).await?;
 
-            println!("D: Bytes written to disk");
 
             progress.inc(bytes_read as u64);
         }

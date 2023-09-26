@@ -11,6 +11,8 @@ use std::{
 };
 use tokio::{io::{ AsyncWrite, AsyncWriteExt}, net::tcp::OwnedWriteHalf};
 
+use crate::MAX_CHUNK_SIZE;
+
 
 
 #[pin_project]
@@ -66,23 +68,24 @@ impl AsyncWrite for EncryptedWriter {
 
         let mut this = self.project();
 
-        this.encryption_space.clear();
-        this.encryption_space.extend_from_slice(buf);
-        this.encryptor
-            .encrypt_next_in_place(&[], this.encryption_space)
-            .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Encryption error"))?;
+        for chunk in buf.chunks(MAX_CHUNK_SIZE) {
+            this.encryption_space.clear();
+            this.encryption_space.extend_from_slice(chunk);
+            this.encryptor
+                .encrypt_next_in_place(&[], this.encryption_space)
+                .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Encryption error"))?;
+    
+            let len = u32::try_from(this.encryption_space.len())
+                .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Message too long"))?;
+    
+            let len = (len + 4).to_be_bytes();
+    
+            this.encryption_space.splice(0..0, len);
+            this.ciphertext.extend(&this.encryption_space[..]);
+        }
 
-        let len = u32::try_from(this.encryption_space.len())
-            .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Message too long"))?;
-
-        let len = (len + 4).to_be_bytes();
-
-        this.encryption_space.splice(0..0, len);
-
-        let bytes_written = ready!(this.writer.as_mut().poll_write(cx, this.encryption_space))?;
-
-        this.ciphertext
-            .extend(&this.encryption_space[bytes_written..]);
+        let bytes_written = ready!(this.writer.as_mut().poll_write(cx, this.ciphertext.make_contiguous()))?;
+        this.ciphertext.drain(0..bytes_written);
 
         Poll::Ready(Ok(buf.len()))
     }
