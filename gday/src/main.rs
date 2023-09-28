@@ -9,6 +9,7 @@ use std::iter::Iterator;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::path::PathBuf;
 use std::process::exit;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 const SERVER: ServerAddr = ServerAddr {
     v6: SocketAddrV6::new(
@@ -87,7 +88,10 @@ async fn main() {
     }
 }
 
-async fn start_connection() -> (EncryptedReader, EncryptedWriter) {
+async fn start_connection() -> (
+    EncryptedReader<OwnedReadHalf>,
+    EncryptedWriter<OwnedWriteHalf>,
+) {
     let (sharer, room_id) = ContactSharer::create_room(SERVER)
         .await
         .unwrap_or_else(|err| {
@@ -107,7 +111,12 @@ async fn start_connection() -> (EncryptedReader, EncryptedWriter) {
     establish_peer_connection(sharer, peer_secret).await
 }
 
-async fn join_connection(mut password: String) -> (EncryptedReader, EncryptedWriter) {
+async fn join_connection(
+    mut password: String,
+) -> (
+    EncryptedReader<OwnedReadHalf>,
+    EncryptedWriter<OwnedWriteHalf>,
+) {
     password.retain(|c| !c.is_whitespace() && c != '-');
     let password = password.to_uppercase();
     let password: [u8; 9] = password.as_bytes().try_into().unwrap_or_else(|_| {
@@ -139,7 +148,10 @@ async fn join_connection(mut password: String) -> (EncryptedReader, EncryptedWri
 async fn establish_peer_connection(
     contact_sharer: ContactSharer,
     peer_secret: PeerSecret,
-) -> (EncryptedReader, EncryptedWriter) {
+) -> (
+    EncryptedReader<OwnedReadHalf>,
+    EncryptedWriter<OwnedWriteHalf>,
+) {
     let connector = contact_sharer
         .get_peer_connector()
         .await
@@ -156,10 +168,21 @@ async fn establish_peer_connection(
                 eprintln!("Couldn't connect to peer: {err}");
                 exit(1)
             });
-    gday_encryption::new(tcp_stream, shared_secret)
-        .await
-        .unwrap_or_else(|err| {
-            eprintln!("Couldn't set up encrypted channel with peer: {err}");
-            exit(1)
-        })
+
+    let (read, write) = tcp_stream.into_split();
+
+    (
+        gday_encryption::EncryptedReader::new(read, shared_secret)
+            .await
+            .unwrap_or_else(|err| {
+                eprintln!("Couldn't set up encrypted channel with peer: {err}");
+                exit(1)
+            }),
+        gday_encryption::EncryptedWriter::new(write, shared_secret)
+            .await
+            .unwrap_or_else(|err| {
+                eprintln!("Couldn't set up encrypted channel with peer: {err}");
+                exit(1)
+            }),
+    )
 }

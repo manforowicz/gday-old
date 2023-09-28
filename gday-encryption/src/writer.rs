@@ -1,31 +1,35 @@
-use chacha20poly1305::{
-    aead::stream::EncryptorLE31,
-    ChaCha20Poly1305,
-};
+use bytes::{Buf, BytesMut};
+use chacha20poly1305::{aead::stream::EncryptorLE31, ChaCha20Poly1305};
 use pin_project::pin_project;
 use std::{
-    collections::VecDeque,
     io::ErrorKind,
     pin::Pin,
     task::{ready, Context, Poll},
 };
-use tokio::{io::{ AsyncWrite, AsyncWriteExt}, net::tcp::OwnedWriteHalf};
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::MAX_CHUNK_SIZE;
 
+pub trait AsyncWritable: AsyncWrite + Send + Unpin {}
+impl<T: AsyncWrite + Send + Unpin> AsyncWritable for T {}
 
-
-#[pin_project]
-pub struct EncryptedWriter {
-    #[pin]
-    writer: OwnedWriteHalf,
-    encryptor: EncryptorLE31<ChaCha20Poly1305>,
-    encryption_space: Vec<u8>,
-    ciphertext: VecDeque<u8>,
+#[derive(PartialEq, Debug)]
+enum Mode {
+    Collecting,
+    Flushing,
 }
 
-impl EncryptedWriter {
-    pub(super) async fn new(mut writer: OwnedWriteHalf, shared_key: [u8; 32]) -> std::io::Result<Self> {
+#[pin_project]
+pub struct EncryptedWriter<T: AsyncWritable> {
+    #[pin]
+    writer: T,
+    encryptor: EncryptorLE31<ChaCha20Poly1305>,
+    bytes: BytesMut,
+    mode: Mode,
+}
+
+impl<T: AsyncWritable> EncryptedWriter<T> {
+    pub async fn new(mut writer: T, shared_key: [u8; 32]) -> std::io::Result<Self> {
         let nonce: [u8; 8] = rand::random();
 
         writer.write_all(&nonce).await?;
@@ -33,65 +37,77 @@ impl EncryptedWriter {
         Ok(Self {
             writer,
             encryptor,
-            encryption_space: Vec::new(),
-            ciphertext: VecDeque::new(),
+            bytes: BytesMut::with_capacity(MAX_CHUNK_SIZE),
+            mode: Mode::Flushing,
         })
     }
 
-    fn flush_local_buffer(
+    fn poll_flush_local(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), std::io::Error>> {
-        let this = self.project();
-        if !this.ciphertext.is_empty() {
-            let bytes_written = ready!(this
-                .writer
-                .poll_write(cx, this.ciphertext.make_contiguous()))?;
-            this.ciphertext.drain(0..bytes_written);
+        assert_eq!(self.mode, Mode::Flushing);
+
+        let mut this = self.project();
+
+        while this.bytes.remaining() != 0 {
+            let chunk = this.bytes.chunk();
+            let bytes_wrote = ready!(this.writer.as_mut().poll_write(cx, chunk))?;
+            this.bytes.advance(bytes_wrote);
         }
 
-        if this.ciphertext.is_empty() {
-            Poll::Ready(Ok(()))
-        } else {
-            Poll::Pending
-        }
+        *this.mode = Mode::Collecting;
+        this.bytes.clear();
+        this.bytes.extend_from_slice(&[0, 0, 0, 0]);
+        Poll::Ready(Ok(()))
+    }
+
+    fn start_flushing(&mut self) -> std::io::Result<()> {
+
+
+        let mut msg = self.bytes.split_off(4);
+
+        self.encryptor
+            .encrypt_next_in_place(&[], &mut msg)
+            .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Decryption error"))?;
+
+        self.bytes.copy_from_slice(&u32::try_from(msg.len()).unwrap().to_be_bytes());
+        self.bytes.unsplit(msg);
+
+        self.mode = Mode::Flushing;
+        Ok(())
     }
 }
 
-impl AsyncWrite for EncryptedWriter {
+impl<T: AsyncWritable> AsyncWrite for EncryptedWriter<T> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
-        ready!(self.as_mut().flush_local_buffer(cx))?;
-
-        let mut this = self.project();
-
-        for chunk in buf.chunks(MAX_CHUNK_SIZE) {
-            this.encryption_space.clear();
-            this.encryption_space.extend_from_slice(chunk);
-            this.encryptor
-                .encrypt_next_in_place(&[], this.encryption_space)
-                .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Encryption error"))?;
-    
-            let len = u32::try_from(this.encryption_space.len())
-                .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Message too long"))?;
-    
-            let len = (len + 4).to_be_bytes();
-
-            this.ciphertext.extend(len);
-            this.ciphertext.extend(&this.encryption_space[..]);
+        if self.mode == Mode::Flushing {
+            ready!(self.as_mut().poll_flush_local(cx))?;
         }
 
-        let bytes_written = ready!(this.writer.as_mut().poll_write(cx, this.ciphertext.make_contiguous()))?;
-        this.ciphertext.drain(0..bytes_written);
+        let bytes_taken = std::cmp::min(buf.len(), self.bytes.spare_capacity_mut().len() - 16);
 
-        Poll::Ready(Ok(buf.len()))
+        self.bytes.extend_from_slice(&buf[0..bytes_taken]);
+
+        if self.bytes.spare_capacity_mut().len() <= 16 {
+            self.start_flushing()?;
+        }
+
+        Poll::Ready(Ok(bytes_taken))
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        ready!(self.as_mut().flush_local_buffer(cx))?;
+        if self.mode != Mode::Flushing && !self.bytes.is_empty() {
+            self.start_flushing()?;
+        }
+        
+        if self.mode == Mode::Flushing {
+            ready!(self.as_mut().poll_flush_local(cx))?;
+        }
         let this = self.project();
         this.writer.poll_flush(cx)
     }
