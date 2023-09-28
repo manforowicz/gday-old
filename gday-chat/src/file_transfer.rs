@@ -28,6 +28,7 @@ pub async fn send_files(
             progress.inc(bytes_read as u64);
         }
     }
+    writer.flush().await?;
     Ok(())
 }
 
@@ -48,10 +49,7 @@ pub async fn receive_files(
         let mut bytes_left = meta.size;
         while bytes_left != 0 {
             let chunk_size = std::cmp::min(buf.len(), bytes_left as usize);
-
-
             let bytes_read = reader.read(&mut buf[..chunk_size]).await?;
-
             bytes_left -= bytes_read as u64;
             file.write_all(&buf[0..bytes_read]).await?;
 
@@ -63,6 +61,6 @@ pub async fn receive_files(
 }
 
 fn create_progress_bar(bytes: u64) -> ProgressBar {
-    let style = ProgressStyle::with_template("[{bar}] {bytes}/{total_bytes} | {bytes_per_sec} | time left: {eta}").unwrap();
+    let style = ProgressStyle::with_template("[{wide_bar}] {bytes}/{total_bytes} | {bytes_per_sec} | time left: {eta}").unwrap();
     ProgressBar::new(bytes).with_style(style)
 }

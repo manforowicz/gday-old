@@ -1,6 +1,6 @@
 use crate::{AsyncReadable, AsyncWritable, Error};
 use rustyline_async::{Readline, ReadlineEvent, SharedWriter};
-use std::io::Write;
+use std::io::{Write, ErrorKind};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     try_join,
@@ -26,8 +26,10 @@ async fn chat_listen(
     let mut tmp_buf = [0; 1_000];
 
     loop {
-        println!("test");
         let bytes_read = reader.read(&mut tmp_buf).await?;
+        if bytes_read == 0 {
+            return Err(std::io::Error::new(ErrorKind::UnexpectedEof, "Peer quit"))?;
+        }
         let text = std::str::from_utf8(&tmp_buf[..bytes_read])?;
         for line in text.lines() {
             writeln!(terminal, "peer: {line}")?;

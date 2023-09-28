@@ -48,7 +48,7 @@ impl HelperBuf {
         self.r += num_bytes;
         assert!(self.r <= self.buf.len());
 
-        if self.r == self.buf.len() {
+        if self.r == self.buf.len() && self.peek_cipher_chunk().is_none() {
             let (blank, data) = self.buf.split_at_mut(self.l);
             let data = &data[0..self.r - self.l];
             assert!(blank.len() >= data.len());

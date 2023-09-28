@@ -91,7 +91,6 @@ async fn main() {
 async fn start_connection() -> (
     EncryptedWriter<OwnedWriteHalf>,
     EncryptedReader<OwnedReadHalf>,
-    
 ) {
     let (sharer, room_id) = ContactSharer::create_room(SERVER)
         .await
@@ -117,7 +116,6 @@ async fn join_connection(
 ) -> (
     EncryptedWriter<OwnedWriteHalf>,
     EncryptedReader<OwnedReadHalf>,
-    
 ) {
     password.retain(|c| !c.is_whitespace() && c != '-');
     let password = password.to_uppercase();
@@ -153,7 +151,6 @@ async fn establish_peer_connection(
 ) -> (
     EncryptedWriter<OwnedWriteHalf>,
     EncryptedReader<OwnedReadHalf>,
-    
 ) {
     let connector = contact_sharer
         .get_peer_connector()
@@ -175,15 +172,13 @@ async fn establish_peer_connection(
     let (read, write) = tcp_stream.into_split();
 
     (
-
         gday_encryption::EncryptedWriter::new(write, shared_secret)
             .await
             .unwrap_or_else(|err| {
                 eprintln!("Couldn't set up encrypted channel with peer: {err}");
                 exit(1)
             }),
-
-            gday_encryption::EncryptedReader::new(read, shared_secret)
+        gday_encryption::EncryptedReader::new(read, shared_secret)
             .await
             .unwrap_or_else(|err| {
                 eprintln!("Couldn't set up encrypted channel with peer: {err}");
