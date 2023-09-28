@@ -24,7 +24,7 @@ struct HelperBuf {
 impl HelperBuf {
     fn with_capacity(capacity: usize) -> Self {
         Self {
-            buf: Vec::with_capacity(capacity),
+            buf: vec![0; capacity],
             l: 0,
             r: 0,
         }
@@ -129,11 +129,11 @@ impl<T: AsyncReadable> AsyncRead for EncryptedReader<T> {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        if buf.remaining() > self.cleartext.chunk().len() {
-            if self.cleartext.is_empty() {
-                while self.cleartext.is_empty() {
+        if buf.remaining() > self.cleartext.remaining() {
+            if !self.cleartext.has_remaining() {
+                while !self.cleartext.has_remaining() {
                     ready!(self.as_mut().inner_read(cx))?;
-                    if self.cleartext.is_empty() && self.ciphertext.data().is_empty() {
+                    if !self.cleartext.has_remaining() && self.ciphertext.data().is_empty() {
                         return Poll::Ready(Ok(()));
                     }
                 }

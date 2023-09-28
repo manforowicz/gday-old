@@ -11,6 +11,7 @@ client = ["dep:futures", "dep:spake2", "dep:socket2", "dep:sha2"]
 server = []
 
 [dependencies]
+async-stream = "0.3.5"
 futures = { version = "0.3.28", optional = true }
 postcard = { version = "1.0.7", features = ["use-std", "experimental-derive"] }
 rand = "0.8.5"

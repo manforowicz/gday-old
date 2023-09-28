@@ -4,7 +4,7 @@ use postcard::{from_bytes, to_slice};
 use serde::{Deserialize, Serialize};
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use thiserror::Error;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncRead, AsyncWrite};
 
 #[cfg(feature = "server")]
 pub mod server;
@@ -48,6 +48,39 @@ pub struct FullContact {
     pub private: Contact,
     pub public: Contact,
 }
+
+pub struct Messenger<T: AsyncRead + AsyncWrite + Unpin> {
+    stream: T,
+    buf: Vec<u8>
+}
+
+impl<T: AsyncRead + AsyncWrite + Unpin> Messenger<T> {
+    pub async fn with_capacity(stream: T, capacity: usize) -> Self {
+        Self {
+            stream,
+            buf: vec![0; capacity]
+        }
+    }
+
+    pub async fn next_msg(&mut self) -> Result<impl Deserialize, SerializationError> {
+        let length = self.stream.read_u32().await? as usize;
+
+        if self.buf.len() < length {
+            return Err(SerializationError::TmpBufTooSmall);
+        }
+    
+        self.stream.read_exact(&mut self.buf[0..length]).await?;
+        Ok(from_bytes(&self.buf[0..length])?)
+    }
+
+    pub async fn write_msg(&mut self, msg: impl Serialize) -> Result<(), SerializationError> {
+        let len = to_slice(&msg, &mut self.buf[4..])?.len();
+        let len_bytes = u32::try_from(len)?.to_be_bytes();
+        self.buf[0..4].copy_from_slice(&len_bytes);
+        Ok(self.stream.write_all(&self.buf[0..4 + len]).await?)
+    }
+}
+
 
 async fn deserialize_from<'a, T: AsyncReadExt + Unpin, U: Deserialize<'a>>(
     stream: &mut T,
