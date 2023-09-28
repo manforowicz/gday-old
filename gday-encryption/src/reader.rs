@@ -52,6 +52,8 @@ impl HelperBuf {
             let (blank, data) = self.buf.split_at_mut(self.l);
             assert!(blank.len() >= data.len());
             blank[0..data.len()].copy_from_slice(data);
+            self.l = 0;
+            self.r = data.len();
         }
     }
 
