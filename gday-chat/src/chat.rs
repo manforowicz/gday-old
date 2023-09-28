@@ -26,6 +26,7 @@ async fn chat_listen(
     let mut tmp_buf = [0; 1_000];
 
     loop {
+        println!("test");
         let bytes_read = reader.read(&mut tmp_buf).await?;
         let text = std::str::from_utf8(&tmp_buf[..bytes_read])?;
         for line in text.lines() {
@@ -45,6 +46,7 @@ async fn chat_talk(
             ReadlineEvent::Line(text) => {
                 if !text.trim().is_empty() {
                     writer.write_all(text.as_bytes()).await?;
+                    writer.flush().await?;
                     user_input.add_history_entry(text);
                 }
             }
