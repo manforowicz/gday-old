@@ -78,7 +78,9 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Messenger<T> {
         let len = to_slice(&msg, &mut self.buf[4..])?.len();
         let len_bytes = u32::try_from(len)?.to_be_bytes();
         self.buf[0..4].copy_from_slice(&len_bytes);
-        Ok(self.stream.write_all(&self.buf[0..4 + len]).await?)
+        self.stream.write_all(&self.buf[0..4 + len]).await?;
+        self.stream.flush().await?;
+        Ok(())
     }
 
     pub fn inner_stream(&self) -> &T {
