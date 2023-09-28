@@ -11,25 +11,12 @@ async fn test_encryption() {
     let mut writer = crate::EncryptedWriter::new(write_stream, key).await.unwrap();
     let mut reader = crate::EncryptedReader::new(read_stream, key).await.unwrap();
 
+    let test_data = [b"abc", b"def", b"ghi", b"jkl", b"mno", b"prs", b"tuw", b"yzz"];
 
-    writer.write_all(b"abc").await.unwrap();
-    writer.flush().await.unwrap();
-    reader.read_exact(&mut buf).await.unwrap();
-    assert_eq!(buf.as_slice(), b"abc");
-    
-
-    
-    writer.write_all(b"def").await.unwrap();
-    
-    writer.flush().await.unwrap();
-    println!("WOHOHFSOFHSOFHSOHF:");
-    reader.read_exact(&mut buf).await.unwrap();
-    println!("WOHOHFSOFHSOFHSOHF:");
-    assert_eq!(buf.as_slice(), b"def");
-
-    writer.write_all(b"hij").await.unwrap();
-    writer.flush().await.unwrap();
-    reader.read_exact(&mut buf).await.unwrap();
-    assert_eq!(buf.as_slice(), b"hij");
-
+    for msg in test_data {
+        writer.write_all(msg).await.unwrap();
+        writer.flush().await.unwrap();
+        reader.read_exact(&mut buf).await.unwrap();
+        assert_eq!(buf.as_slice(), msg);
+    }
 }
