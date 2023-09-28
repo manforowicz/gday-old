@@ -30,7 +30,7 @@ impl HelperBuf {
         }
     }
 
-    fn spare_capctity_mut(&mut self) -> ReadBuf<'_> {
+    fn spare_capacity_mut(&mut self) -> ReadBuf<'_> {
         ReadBuf::new(&mut self.buf[self.r..])
     }
 
@@ -50,7 +50,6 @@ impl HelperBuf {
 
         if self.r == self.buf.len() && self.peek_cipher_chunk().is_none() {
             let (blank, data) = self.buf.split_at_mut(self.l);
-            let data = &data[0..self.r - self.l];
             assert!(blank.len() >= data.len());
             blank[0..data.len()].copy_from_slice(data);
         }
@@ -97,7 +96,7 @@ impl<T: AsyncReadable> EncryptedReader<T> {
     fn inner_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         let this = self.as_mut().project();
 
-        let mut read_buf = this.ciphertext.spare_capctity_mut();
+        let mut read_buf = this.ciphertext.spare_capacity_mut();
         ready!(this.reader.poll_read(cx, &mut read_buf))?;
         let bytes_read = read_buf.filled().len();
         this.ciphertext.advance_r_cursor(bytes_read);
@@ -129,8 +128,10 @@ impl<T: AsyncReadable> AsyncRead for EncryptedReader<T> {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
+
         if buf.remaining() > self.cleartext.remaining() {
             if !self.cleartext.has_remaining() {
+                self.cleartext.clear();
                 while !self.cleartext.has_remaining() {
                     ready!(self.as_mut().inner_read(cx))?;
                     if !self.cleartext.has_remaining() && self.ciphertext.data().is_empty() {
@@ -147,10 +148,6 @@ impl<T: AsyncReadable> AsyncRead for EncryptedReader<T> {
 
         buf.put_slice(&chunk[0..num_bytes]);
         self.cleartext.advance(num_bytes);
-
-        if !self.cleartext.has_remaining() {
-            self.cleartext.clear()
-        }
 
         Poll::Ready(Ok(()))
     }
