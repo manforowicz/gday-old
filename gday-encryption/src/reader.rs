@@ -39,14 +39,14 @@ impl<T: AsyncReadable> EncryptedReader<T> {
         })
     }
 
-    fn get_next_cipher_chunk(ciphertext: &mut BytesMut) -> Option<Bytes> {
-        if ciphertext.remaining() >= 4 {
+    fn is_next_cipher_chunk_ready(&self) -> Option<usize> {
+        if self.ciphertext.remaining() >= 4 {
             let mut len = [0; 4];
-            ciphertext.copy_to_slice(&mut len);
-            let len = u32::from_be_bytes(len) as usize;
-
-            if ciphertext.remaining() >= len {
-                return Some(ciphertext.copy_to_bytes(len));
+            self.ciphertext.copy_to_slice(&mut len);
+            let len = self.ciphertext.get_u32()
+            
+            if self.ciphertext.remaining() >= len {
+                return Some(len);
             }
         } 
 
@@ -63,13 +63,25 @@ impl<T: AsyncReadable> EncryptedReader<T> {
         let bytes_read = read_buf.filled().len();
         unsafe { this.ciphertext.advance_mut(bytes_read) };
 
-        while let Some(chunk) = Self::get_next_cipher_chunk(this.ciphertext) {
-            let mut decryption_space = this.cleartext.split_off(this.cleartext.len());
-            decryption_space.extend_from_slice(&chunk);
-            this.decryptor
+        while let Some(mut len) = self.is_next_cipher_chunk_ready() {
+            if self.cleartext.capacity() - self.cleartext.len() < len {
+                break
+            }
+
+            let cleartext_len = self.cleartext.len();
+            let mut decryption_space = self.cleartext.split_off(cleartext_len);
+            while len > 0 {
+                let chunk = self.ciphertext.chunk();
+                let moving = std::cmp::min(len, chunk.len());
+                decryption_space.extend_from_slice(&chunk[..moving]);
+                self.ciphertext.advance(moving);
+                len -= moving;
+            }
+            
+            self.decryptor
                 .decrypt_next_in_place(&[], &mut decryption_space)
                 .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Decryption error"))?;
-            this.cleartext.unsplit(decryption_space);
+            self.cleartext.unsplit(decryption_space);
         }
 
         Poll::Ready(Ok(()))
