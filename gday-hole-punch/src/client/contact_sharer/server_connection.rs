@@ -47,21 +47,19 @@ impl ServerConnection {
         }
     }
 
-    pub(super) fn get_all_streams_with_sockets(
+    pub(super) fn get_all_messengers(
         &mut self,
-    ) -> std::io::Result<Vec<(&mut MyMessenger, SocketAddr)>> {
-        let mut streams = Vec::new();
+    ) -> std::io::Result<Vec<&mut MyMessenger>> {
+        let mut messengers = Vec::new();
 
-        if let Some(stream) = &mut self.v6 {
-            let addr = V6(addr_v6_from_stream(stream)?);
-            streams.push((stream, addr));
+        if let Some(messenger) = &mut self.v6 {
+            messengers.push(messenger);
         }
-        if let Some(stream) = &mut self.v4 {
-            let addr = V4(addr_v4_from_stream(stream)?);
-            streams.push((stream, addr));
+        if let Some(messenger) = &mut self.v4 {
+            messengers.push(messenger);
         }
 
-        Ok(streams)
+        Ok(messengers)
     }
 
     pub fn get_local_contact(&self) -> std::io::Result<Contact> {
@@ -81,7 +79,7 @@ impl ServerConnection {
 }
 
 fn addr_v6_from_stream(stream: &MyMessenger) -> std::io::Result<SocketAddrV6> {
-    let addr = stream.inner_stream().get_ref().0.local_addr()?;
+    let addr = stream.local_addr()?;
     let V6(v6) = addr else {
         panic!("Called unwrap_v6 on SocketAddrV4")
     };
@@ -89,7 +87,7 @@ fn addr_v6_from_stream(stream: &MyMessenger) -> std::io::Result<SocketAddrV6> {
 }
 
 fn addr_v4_from_stream(stream: &MyMessenger) -> std::io::Result<SocketAddrV4> {
-    let addr = stream.inner_stream().get_ref().0.local_addr()?;
+    let addr = stream.local_addr()?;
     let V4(v4) = addr else {
         panic!("Called unwrap_v6 on SocketAddrV4")
     };

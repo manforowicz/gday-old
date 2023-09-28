@@ -39,7 +39,7 @@ impl ConnectionHandler {
             }) => {
                 if self
                     .state
-                    .update_client(room_id, is_creator, self.messenger.inner_stream().get_ref().0.peer_addr()?, true)
+                    .update_client(room_id, is_creator, self.messenger.peer_addr()?, true)
                     .is_err()
                 {
                     self.send(ServerMessage::ErrorNoSuchRoomID).await?;

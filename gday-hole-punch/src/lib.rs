@@ -4,7 +4,7 @@ use postcard::{from_bytes, to_slice};
 use serde::{Deserialize, Serialize};
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use thiserror::Error;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncRead, AsyncWrite};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt, AsyncRead, AsyncWrite}, net::TcpStream};
 
 #[cfg(feature = "server")]
 pub mod server;
@@ -85,6 +85,27 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Messenger<T> {
         &self.stream
     }
 }
+
+impl Messenger<tokio_rustls::server::TlsStream<TcpStream>> {
+    pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        self.stream.get_ref().0.local_addr()
+    }
+
+    pub fn peer_addr(&self) -> std::io::Result<SocketAddr> {
+        self.stream.get_ref().0.peer_addr()
+    }
+}
+
+impl Messenger<tokio_rustls::client::TlsStream<TcpStream>> {
+    pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        self.stream.get_ref().0.local_addr()
+    }
+
+    pub fn peer_addr(&self) -> std::io::Result<SocketAddr> {
+        self.stream.get_ref().0.peer_addr()
+    }
+}
+
 /*
 
 async fn deserialize_from<'a, T: AsyncReadExt + Unpin, U: Deserialize<'a>>(

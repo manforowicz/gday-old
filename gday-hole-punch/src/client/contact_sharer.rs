@@ -58,15 +58,15 @@ impl ContactSharer {
     /// TODO: ADD ERROR HANDLING FOR NO SERVER CONNECTIONS
 
     pub async fn get_peer_connector(mut self) -> Result<PeerConnector, ClientError> {
-        let mut conns = self.connection.get_all_streams_with_sockets()?;
+        let mut conns = self.connection.get_all_messengers()?;
 
         for conn in &mut conns {
             let msg = ClientMessage::SendContact {
                 room_id: self.room_id,
                 is_creator: self.is_creator,
-                private_addr: Some(conn.1),
+                private_addr: Some(conn.local_addr()?),
             };
-            conn.0.write_msg(msg).await?;
+            conn.write_msg(msg).await?;
             //serialize_into(conn.0, &msg, &mut self.tmp_buf).await?;
         }
 
@@ -74,10 +74,10 @@ impl ContactSharer {
             room_id: self.room_id,
             is_creator: self.is_creator,
         };
-        conns[0].0.write_msg(msg).await?;
+        conns[0].write_msg(msg).await?;
         //serialize_into(conns[0].0, &msg, &mut self.tmp_buf).await?;
 
-        let response: ServerMessage = conns[0].0.next_msg().await?;
+        let response: ServerMessage = conns[0].next_msg().await?;
         //let response: ServerMessage = deserialize_from(conns[0].0, &mut self.tmp_buf).await?;
 
         if let ServerMessage::SharePeerContacts {
