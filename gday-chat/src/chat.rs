@@ -10,9 +10,7 @@ pub async fn start_chat(
     reader: &mut impl AsyncReadable,
     writer: &mut impl AsyncWritable,
 ) -> Result<(), Error> {
-    println!("CHAT MOSTLY STARTED!");
     let (user_input, terminal) = Readline::new("you: ".to_string()).unwrap();
-
 
     let future_a = chat_listen(reader, terminal);
     let future_b = chat_talk(writer, user_input);

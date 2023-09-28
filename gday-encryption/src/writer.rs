@@ -33,7 +33,9 @@ impl<T: AsyncWritable> EncryptedWriter<T> {
         let nonce: [u8; 8] = rand::random();
 
         writer.write_all(&nonce).await?;
+        println!("wrote");
         writer.flush().await?;
+        println!("flushed");
         let encryptor = EncryptorLE31::new(&shared_key.into(), &nonce.into());
         Ok(Self {
             writer,

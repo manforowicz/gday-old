@@ -31,7 +31,9 @@ pub async fn serialize_into<T: AsyncWriteExt + Unpin, U: Serialize>(
     let mut msg = to_stdvec(&msg)?;
     let len = u32::try_from(msg.len())?.to_be_bytes();
     msg.splice(0..0, len);
-    Ok(stream.write_all(&msg).await?)
+    stream.write_all(&msg).await?;
+    stream.flush().await?;
+    Ok(())
 }
 
 pub async fn deserialize_from<'a, T: AsyncReadExt + Unpin, U: Deserialize<'a>>(
