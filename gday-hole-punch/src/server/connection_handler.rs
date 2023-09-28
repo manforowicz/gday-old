@@ -1,7 +1,6 @@
 use crate::server::global_state::State;
-use crate::SerializationError;
-use crate::{deserialize_from, serialize_into, ClientMessage, ServerMessage};
-use std::net::SocketAddr;
+use crate::{SerializationError, Messenger};
+use crate::{ClientMessage, ServerMessage};
 use tokio::net::TcpStream;
 use tokio_rustls::server::TlsStream;
 
@@ -9,18 +8,14 @@ use super::ServerError;
 
 pub struct ConnectionHandler {
     state: State,
-    stream: TlsStream<TcpStream>,
-    client_addr: SocketAddr,
-    tmp_buf: [u8; 68],
+    messenger: Messenger<TlsStream<TcpStream>>,
 }
 
 impl ConnectionHandler {
-    pub async fn start(state: State, stream: TlsStream<TcpStream>, client_addr: SocketAddr) -> Result<(), ServerError> {
+    pub async fn start(state: State, stream: TlsStream<TcpStream>) -> Result<(), ServerError> {
         let mut this = ConnectionHandler {
             state,
-            stream,
-            client_addr,
-            tmp_buf: [0; 68],
+            messenger: Messenger::with_capacity(stream, 68),
         };
         loop {
             Self::handle_message(&mut this).await?;
@@ -28,7 +23,9 @@ impl ConnectionHandler {
     }
 
     async fn handle_message(&mut self) -> Result<(), ServerError> {
-        let msg = deserialize_from(&mut self.stream, &mut self.tmp_buf).await;
+        //let msg = deserialize_from(&mut self.stream, &mut self.tmp_buf).await;
+
+        let msg: Result<_, _> = self.messenger.next_msg().await;
 
         match msg {
             Ok(ClientMessage::CreateRoom) => {
@@ -42,7 +39,7 @@ impl ConnectionHandler {
             }) => {
                 if self
                     .state
-                    .update_client(room_id, is_creator, self.client_addr, true)
+                    .update_client(room_id, is_creator, self.messenger.inner_stream().get_ref().0.peer_addr()?, true)
                     .is_err()
                 {
                     self.send(ServerMessage::ErrorNoSuchRoomID).await?;
@@ -83,6 +80,6 @@ impl ConnectionHandler {
     }
 
     async fn send(&mut self, msg: ServerMessage) -> Result<(), SerializationError> {
-        serialize_into(&mut self.stream, &msg, &mut self.tmp_buf).await
+        self.messenger.write_msg(msg).await
     }
 }

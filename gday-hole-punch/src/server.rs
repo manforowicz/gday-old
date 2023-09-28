@@ -33,12 +33,12 @@ pub enum ServerError {
 pub async fn run(listener: TcpListener, tls_acceptor: TlsAcceptor) -> Result<(), ServerError> {
     let state = State::default();
     loop {
-        let (stream, addr) = listener.accept().await.unwrap();
+        let (stream, _addr) = listener.accept().await.unwrap();
         let tls_acceptor = tls_acceptor.clone();
         let state = state.clone();
         tokio::spawn(async move {
             let tls_stream = tls_acceptor.accept(stream).await?;
-            ConnectionHandler::start(state, tls_stream, addr).await
+            ConnectionHandler::start(state, tls_stream).await
         });
     }
 }

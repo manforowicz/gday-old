@@ -1,4 +1,4 @@
-use crate::{Contact, client::ServerAddr};
+use crate::{Contact, client::ServerAddr, Messenger};
 use std::net::{
     SocketAddr,
     SocketAddr::{V4, V6},
@@ -13,9 +13,11 @@ use super::ClientError;
 
 
 pub struct ServerConnection {
-    v6: Option<TlsStream<TcpStream>>,
-    v4: Option<TlsStream<TcpStream>>,
+    v6: Option<MyMessenger>,
+    v4: Option<MyMessenger>,
 }
+
+type MyMessenger = Messenger<TlsStream<TcpStream>>;
 
 impl ServerConnection {
     pub async fn new(server_addr: ServerAddr) -> Result<Self, ClientError> {
@@ -35,7 +37,7 @@ impl ServerConnection {
         }
     }
 
-    pub fn get_any_stream(&mut self) -> &mut TlsStream<TcpStream> {
+    pub(super) fn get_any_messenger(&mut self) -> &mut MyMessenger {
         if let Some(stream) = &mut self.v6 {
             stream
         } else if let Some(stream) = &mut self.v4 {
@@ -45,9 +47,9 @@ impl ServerConnection {
         }
     }
 
-    pub fn get_all_streams_with_sockets(
+    pub(super) fn get_all_streams_with_sockets(
         &mut self,
-    ) -> std::io::Result<Vec<(&mut TlsStream<TcpStream>, SocketAddr)>> {
+    ) -> std::io::Result<Vec<(&mut MyMessenger, SocketAddr)>> {
         let mut streams = Vec::new();
 
         if let Some(stream) = &mut self.v6 {
@@ -78,16 +80,16 @@ impl ServerConnection {
     }
 }
 
-fn addr_v6_from_stream(stream: &TlsStream<TcpStream>) -> std::io::Result<SocketAddrV6> {
-    let addr = stream.get_ref().0.local_addr()?;
+fn addr_v6_from_stream(stream: &MyMessenger) -> std::io::Result<SocketAddrV6> {
+    let addr = stream.inner_stream().get_ref().0.local_addr()?;
     let V6(v6) = addr else {
         panic!("Called unwrap_v6 on SocketAddrV4")
     };
     Ok(v6)
 }
 
-fn addr_v4_from_stream(stream: &TlsStream<TcpStream>) -> std::io::Result<SocketAddrV4> {
-    let addr = stream.get_ref().0.local_addr()?;
+fn addr_v4_from_stream(stream: &MyMessenger) -> std::io::Result<SocketAddrV4> {
+    let addr = stream.inner_stream().get_ref().0.local_addr()?;
     let V4(v4) = addr else {
         panic!("Called unwrap_v6 on SocketAddrV4")
     };
@@ -110,7 +112,7 @@ async fn connect(
     server_addr: impl Into<SocketAddr>,
     server_name: &str,
     tls_connector: &TlsConnector,
-) -> std::io::Result<TlsStream<TcpStream>> {
+) -> std::io::Result<MyMessenger> {
     let server_addr = server_addr.into();
     let socket = match server_addr {
         V6(_) => TcpSocket::new_v6(),
@@ -123,5 +125,5 @@ async fn connect(
         .connect(server_name.try_into().unwrap(), tcp_stream)
         .await?;
 
-    Ok(tls_stream)
+    Ok(Messenger::with_capacity(tls_stream, 68))
 }

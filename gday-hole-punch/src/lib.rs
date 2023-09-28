@@ -49,20 +49,21 @@ pub struct FullContact {
     pub public: Contact,
 }
 
-pub struct Messenger<T: AsyncRead + AsyncWrite + Unpin> {
+#[derive(Debug)]
+struct Messenger<T: AsyncRead + AsyncWrite + Unpin> {
     stream: T,
     buf: Vec<u8>
 }
 
 impl<T: AsyncRead + AsyncWrite + Unpin> Messenger<T> {
-    pub async fn with_capacity(stream: T, capacity: usize) -> Self {
+    pub fn with_capacity(stream: T, capacity: usize) -> Self {
         Self {
             stream,
             buf: vec![0; capacity]
         }
     }
 
-    pub async fn next_msg(&mut self) -> Result<impl Deserialize, SerializationError> {
+    pub async fn next_msg<'a, U: Deserialize<'a>>(&'a mut self) -> Result<U, SerializationError> {
         let length = self.stream.read_u32().await? as usize;
 
         if self.buf.len() < length {
@@ -79,8 +80,12 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Messenger<T> {
         self.buf[0..4].copy_from_slice(&len_bytes);
         Ok(self.stream.write_all(&self.buf[0..4 + len]).await?)
     }
-}
 
+    pub fn inner_stream(&self) -> &T {
+        &self.stream
+    }
+}
+/*
 
 async fn deserialize_from<'a, T: AsyncReadExt + Unpin, U: Deserialize<'a>>(
     stream: &mut T,
@@ -108,6 +113,8 @@ async fn serialize_into<T: AsyncWriteExt + Unpin, U: Serialize>(
     tmp_buf[0..4].copy_from_slice(&len_bytes);
     Ok(stream.write_all(&tmp_buf[0..4 + len]).await?)
 }
+
+*/
 
 
 
