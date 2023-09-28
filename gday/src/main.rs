@@ -54,7 +54,7 @@ async fn main() {
                 eprintln!("{err}");
                 exit(1)
             });
-            let (mut reader, mut writer) = start_connection().await;
+            let (mut writer, mut reader) = start_connection().await;
             println!("Encryption established baby!");
             gday_chat::creator_run(&mut reader, &mut writer, Some(files))
                 .await
@@ -65,7 +65,7 @@ async fn main() {
         }
 
         Commands::Chat => {
-            let (mut reader, mut writer) = start_connection().await;
+            let (mut writer, mut reader) = start_connection().await;
             println!("Encryption established baby!");
             gday_chat::creator_run(&mut reader, &mut writer, None)
                 .await
@@ -76,7 +76,7 @@ async fn main() {
         }
 
         Commands::Join { password } => {
-            let (mut reader, mut writer) = join_connection(password).await;
+            let (mut writer, mut reader) = join_connection(password).await;
             println!("Encryption established baby!");
             gday_chat::not_creator_run(&mut reader, &mut writer)
                 .await
@@ -89,8 +89,9 @@ async fn main() {
 }
 
 async fn start_connection() -> (
-    EncryptedReader<OwnedReadHalf>,
     EncryptedWriter<OwnedWriteHalf>,
+    EncryptedReader<OwnedReadHalf>,
+    
 ) {
     let (sharer, room_id) = ContactSharer::create_room(SERVER)
         .await
@@ -114,8 +115,9 @@ async fn start_connection() -> (
 async fn join_connection(
     mut password: String,
 ) -> (
-    EncryptedReader<OwnedReadHalf>,
     EncryptedWriter<OwnedWriteHalf>,
+    EncryptedReader<OwnedReadHalf>,
+    
 ) {
     password.retain(|c| !c.is_whitespace() && c != '-');
     let password = password.to_uppercase();
@@ -149,8 +151,9 @@ async fn establish_peer_connection(
     contact_sharer: ContactSharer,
     peer_secret: PeerSecret,
 ) -> (
-    EncryptedReader<OwnedReadHalf>,
     EncryptedWriter<OwnedWriteHalf>,
+    EncryptedReader<OwnedReadHalf>,
+    
 ) {
     let connector = contact_sharer
         .get_peer_connector()
@@ -172,13 +175,15 @@ async fn establish_peer_connection(
     let (read, write) = tcp_stream.into_split();
 
     (
-        gday_encryption::EncryptedReader::new(read, shared_secret)
+
+        gday_encryption::EncryptedWriter::new(write, shared_secret)
             .await
             .unwrap_or_else(|err| {
                 eprintln!("Couldn't set up encrypted channel with peer: {err}");
                 exit(1)
             }),
-        gday_encryption::EncryptedWriter::new(write, shared_secret)
+
+            gday_encryption::EncryptedReader::new(read, shared_secret)
             .await
             .unwrap_or_else(|err| {
                 eprintln!("Couldn't set up encrypted channel with peer: {err}");
