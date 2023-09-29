@@ -8,7 +8,7 @@ use std::{
 };
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
-use crate::{MAX_CHUNK_SIZE, HelperBuf};
+use crate::{HelperBuf, MAX_CHUNK_SIZE};
 
 pub trait AsyncReadable: AsyncRead + Send + Unpin {}
 impl<T: AsyncRead + Send + Unpin> AsyncReadable for T {}
@@ -49,9 +49,7 @@ impl<T: AsyncReadable> EncryptedReader<T> {
     fn inner_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         let this = self.as_mut().project();
 
-
         let old_cipherbuf_len = this.ciphertext.buf.len();
-
         let spare = this.ciphertext.buf.spare_capacity_mut();
         let mut read_buf = ReadBuf::uninit(spare);
         ready!(this.reader.poll_read(cx, &mut read_buf))?;
@@ -66,21 +64,21 @@ impl<T: AsyncReadable> EncryptedReader<T> {
 
             let cleartext_len = this.cleartext.buf.len();
             let mut decryption_space = this.cleartext.buf.split_off(cleartext_len);
-            
+
             decryption_space.extend_from_slice(msg);
 
             this.ciphertext.advance_cursor(msg_len + 4);
-
-            if peek_cipher_chunk(this.ciphertext).is_none() && this.cleartext.spare_capacity_len() == 0 {
-                this.ciphertext.wrap();
-            }
 
             this.decryptor
                 .decrypt_next_in_place(&[], &mut decryption_space)
                 .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Decryption error"))?;
 
-
             this.cleartext.buf.unsplit(decryption_space);
+        }
+
+        if peek_cipher_chunk(this.ciphertext).is_none() && this.cleartext.spare_capacity_len() == 0
+        {
+            this.ciphertext.wrap();
         }
 
         Poll::Ready(Ok(()))
@@ -108,10 +106,9 @@ impl<T: AsyncReadable> AsyncRead for EncryptedReader<T> {
                 let _ = self.as_mut().inner_read(cx)?;
             }
         }
-        
+
         let chunk = self.cleartext.data();
         let num_bytes = std::cmp::min(buf.remaining(), chunk.len());
-
 
         buf.put_slice(&chunk[0..num_bytes]);
 
