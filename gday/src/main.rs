@@ -156,7 +156,7 @@ async fn establish_peer_connection(
         .get_peer_connector()
         .await
         .unwrap_or_else(|err| {
-            eprintln!("Error getting peer contact: {err}");
+            eprintln!("Couldn't get peer contact: {err}");
             exit(1)
         });
 
@@ -175,13 +175,13 @@ async fn establish_peer_connection(
         gday_encryption::EncryptedWriter::new(write, shared_secret)
             .await
             .unwrap_or_else(|err| {
-                eprintln!("Couldn't set up encrypted channel with peer: {err}");
+                eprintln!("Couldn't encrypt peer connection: {err}");
                 exit(1)
             }),
         gday_encryption::EncryptedReader::new(read, shared_secret)
             .await
             .unwrap_or_else(|err| {
-                eprintln!("Couldn't set up encrypted channel with peer: {err}");
+                eprintln!("Couldn't encrypt peer connection: {err}");
                 exit(1)
             }),
     )

@@ -13,66 +13,6 @@ use crate::{MAX_CHUNK_SIZE, HelperBuf};
 pub trait AsyncReadable: AsyncRead + Send + Unpin {}
 impl<T: AsyncRead + Send + Unpin> AsyncReadable for T {}
 
-/*
-struct HelperBuf {
-    buf: Vec<u8>,
-    l: usize,
-    r: usize,
-}
-
-impl HelperBuf {
-    fn with_capacity(capacity: usize) -> Self {
-        Self {
-            buf: vec![0; capacity],
-            l: 0,
-            r: 0,
-        }
-    }
-
-    fn spare_capacity_mut(&mut self) -> ReadBuf<'_> {
-        ReadBuf::new(&mut self.buf[self.r..])
-    }
-
-    fn advance_l_cursor(&mut self, num_bytes: usize) {
-        self.l += num_bytes;
-        assert!(self.l <= self.r);
-
-        if self.l == self.r {
-            self.l = 0;
-            self.r = 0;
-        }
-    }
-
-    fn advance_r_cursor(&mut self, num_bytes: usize) {
-        self.r += num_bytes;
-        assert!(self.r <= self.buf.len());
-
-        if self.r == self.buf.len() && self.peek_cipher_chunk().is_none() {
-            let (blank, data) = self.buf.split_at_mut(self.l);
-            assert!(blank.len() >= data.len());
-            blank[0..data.len()].copy_from_slice(data);
-            self.l = 0;
-            self.r = data.len();
-        }
-    }
-
-    fn data(&self) -> &[u8] {
-        &self.buf[self.l..self.r]
-    }
-
-    fn peek_cipher_chunk(&mut self) -> Option<&[u8]> {
-        if let Some(len) = self.data().get(0..4) {
-            let len = u32::from_be_bytes(len.try_into().unwrap()) as usize;
-            if let Some(chunk) = self.data().get(4..4 + len) {
-                return Some(chunk);
-            }
-        }
-        None
-    }
-}
-
-*/
-
 fn peek_cipher_chunk(buf: &mut HelperBuf) -> Option<&[u8]> {
     if let Some(len) = buf.data().get(0..4) {
         let len = u32::from_be_bytes(len.try_into().unwrap()) as usize;
@@ -121,13 +61,11 @@ impl<T: AsyncReadable> EncryptedReader<T> {
         while let Some(msg) = peek_cipher_chunk(this.ciphertext) {
             let msg_len = msg.len();
             if this.cleartext.spare_capacity_len() < msg_len {
-                //println!("capacity: {} len: {}", self.cleartext.capacity(), self.cleartext.len());
                 break;
             }
 
             let cleartext_len = this.cleartext.buf.len();
             let mut decryption_space = this.cleartext.buf.split_off(cleartext_len);
-            assert!(decryption_space.spare_capacity_mut().len() >= msg.len());
             
             decryption_space.extend_from_slice(msg);
 
@@ -155,8 +93,8 @@ impl<T: AsyncReadable> AsyncRead for EncryptedReader<T> {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        assert!(self.cleartext.buf.capacity() == MAX_CHUNK_SIZE);
-        assert!(self.ciphertext.buf.capacity() == 2 * MAX_CHUNK_SIZE);
+        debug_assert!(self.cleartext.buf.capacity() == MAX_CHUNK_SIZE);
+        debug_assert!(self.ciphertext.buf.capacity() == 2 * MAX_CHUNK_SIZE);
 
         if buf.remaining() > self.cleartext.data().len() {
             if self.cleartext.data().is_empty() {

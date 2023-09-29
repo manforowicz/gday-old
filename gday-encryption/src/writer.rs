@@ -83,7 +83,7 @@ impl<T: AsyncWritable> AsyncWrite for EncryptedWriter<T> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
-        assert!(self.bytes.buf.capacity() == MAX_CHUNK_SIZE);
+        debug_assert!(self.bytes.buf.capacity() == MAX_CHUNK_SIZE);
         if self.mode == Mode::Flushing {
             ready!(self.as_mut().poll_flush_local(cx))?;
         }

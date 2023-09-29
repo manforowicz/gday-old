@@ -1,7 +1,10 @@
 use std::path::Path;
 
-use crate::{protocol::{FileMeta, LocalFileMeta}, RECEIVED_FILE_FOLDER};
-use indicatif::{ProgressBar, ProgressStyle};
+use crate::{
+    protocol::{FileMeta, LocalFileMeta},
+    RECEIVED_FILE_FOLDER,
+};
+use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -39,7 +42,6 @@ pub async fn receive_files(
     let size: u64 = files.iter().map(|meta| meta.size).sum();
     let progress = create_progress_bar(size);
 
-
     let mut buf = vec![0; 10_000];
     for meta in files {
         let path = Path::new(RECEIVED_FILE_FOLDER).join(meta.path);
@@ -53,7 +55,6 @@ pub async fn receive_files(
             bytes_left -= bytes_read as u64;
             file.write_all(&buf[0..bytes_read]).await?;
 
-
             progress.inc(bytes_read as u64);
         }
     }
@@ -61,6 +62,10 @@ pub async fn receive_files(
 }
 
 fn create_progress_bar(bytes: u64) -> ProgressBar {
-    let style = ProgressStyle::with_template("[{wide_bar}] {bytes}/{total_bytes} | {bytes_per_sec} | time left: {eta}").unwrap();
-    ProgressBar::new(bytes).with_style(style)
+    let style = ProgressStyle::with_template(
+        "[{wide_bar}] {bytes}/{total_bytes} | {bytes_per_sec} | time left: {eta}",
+    )
+    .unwrap();
+    let draw = ProgressDrawTarget::stderr_with_hz(2);
+    ProgressBar::with_draw_target(Some(bytes), draw).with_style(style)
 }
