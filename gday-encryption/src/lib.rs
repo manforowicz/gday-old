@@ -43,6 +43,9 @@ impl HelperBuf {
 
     fn wrap(&mut self) {
         let (blank, data) = self.buf.split_at_mut(self.cursor);
-        blank[0..data.len()].copy_from_slice(data);
+        let data_len = data.len();
+        blank[0..data_len].copy_from_slice(data);
+        self.buf.resize(data_len, 0);
+        self.cursor = 0;
     }
 }

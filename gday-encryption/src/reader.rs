@@ -110,7 +110,7 @@ impl<T: AsyncReadable> EncryptedReader<T> {
 
         self.as_mut().decrypt_all_full_chunks()?;
 
-        while self.cleartext.data().len() < bytes_amount {
+        while self.cleartext.data().len() < bytes_amount && self.ciphertext.spare_capacity_len() != 0 {
             let poll = self.as_mut().inner_read(cx)?;
 
             if poll == Poll::Pending {
@@ -125,8 +125,7 @@ impl<T: AsyncReadable> EncryptedReader<T> {
                 self.as_mut().decrypt_all_full_chunks()?;
             }
         }
-        println!("{bytes_amount}");
-        println!("{}", self.ciphertext.spare_capacity_len());
+
         debug_assert!(!self.cleartext.data().is_empty());
 
         Poll::Ready(Ok(false))
@@ -162,7 +161,6 @@ impl<T: AsyncReadable> AsyncBufRead for EncryptedReader<T> {
     ) -> Poll<std::io::Result<&[u8]>> {
         let is_eof = ready!(self.as_mut().read_if_necessary(cx, None)?);
         if is_eof {
-            println!("hao");
             Poll::Ready(Ok(&[]))
         } else {
             Poll::Ready(Ok(self.project().cleartext.data()))
