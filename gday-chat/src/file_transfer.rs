@@ -109,6 +109,8 @@ impl<'a, T: AsyncWritable> AsyncWrite for ProgressWrite<'a, T> {
 
         if let Poll::Ready(Ok(num)) = poll {
             this.progress.inc(num as u64);
+        } else {
+            this.progress.tick();
         }
         poll
     }
