@@ -8,7 +8,7 @@ use bytes::BytesMut;
 pub use reader::EncryptedReader;
 pub use writer::EncryptedWriter;
 
-const MAX_CHUNK_SIZE: usize = 10_000;
+const MAX_CHUNK_SIZE: usize = 8 * 1024;
 
 struct HelperBuf {
     buf: BytesMut,
