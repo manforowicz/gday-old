@@ -16,11 +16,10 @@ impl<T: AsyncRead + Send + Unpin> AsyncReadable for T {}
 fn peek_cipher_chunk(buf: &mut HelperBuf) -> Option<&[u8]> {
     if let Some(len) = buf.data().get(0..4) {
         let len = u32::from_be_bytes(len.try_into().unwrap()) as usize;
-        if let Some(chunk) = buf.data().get(4..4 + len) {
-            return Some(chunk);
-        }
+        buf.data().get(4..4 + len)
+    } else {
+        None
     }
-    None
 }
 
 #[pin_project]
@@ -57,6 +56,13 @@ impl<T: AsyncReadable> EncryptedReader<T> {
         let new_len = old_cipherbuf_len + read_buf.filled().len();
         unsafe { this.ciphertext.buf.set_len(new_len) }
 
+        self.decrypt_all_full_chunks()?;
+
+        Poll::Ready(Ok(()))
+    }
+
+    fn decrypt_all_full_chunks(self: Pin<&mut Self>) -> std::io::Result<()> {
+        let this = self.project();
         while let Some(msg) = peek_cipher_chunk(this.ciphertext) {
             let msg_len = msg.len();
             if this.cleartext.spare_capacity_len() < msg_len {
@@ -77,15 +83,15 @@ impl<T: AsyncReadable> EncryptedReader<T> {
             this.cleartext.buf.unsplit(decryption_space);
         }
 
-        if peek_cipher_chunk(this.ciphertext).is_none() && this.cleartext.spare_capacity_len() == 0
+        if peek_cipher_chunk(this.ciphertext).is_none() && this.ciphertext.spare_capacity_len() == 0
         {
             this.ciphertext.wrap();
         }
 
-        Poll::Ready(Ok(()))
+        Ok(())
     }
 
-    /// True if eof, false if not. Stops reading when cleartext has length greater than max_bytes
+    /// True if eof, false if not. Stops reading when cleartext has length at least max_bytes
     fn read_if_necessary(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -93,8 +99,8 @@ impl<T: AsyncReadable> EncryptedReader<T> {
     ) -> Poll<std::io::Result<bool>> {
         let mut bytes_target = self.cleartext.buf.capacity() - self.cleartext.cursor;
 
-        if let Some(bytes_wanted) = max_bytes {
-            bytes_target = std::cmp::min(bytes_target, bytes_wanted);
+        if let Some(max_bytes) = max_bytes {
+            bytes_target = std::cmp::min(bytes_target, max_bytes);
         }
 
         while bytes_target > self.cleartext.data().len() {
@@ -151,8 +157,7 @@ impl<T: AsyncReadable> AsyncBufRead for EncryptedReader<T> {
         if is_eof {
             Poll::Ready(Ok(&[]))
         } else {
-            let this = self.project();
-            Poll::Ready(Ok(this.cleartext.data()))
+            Poll::Ready(Ok(self.project().cleartext.data()))
         }
     }
 

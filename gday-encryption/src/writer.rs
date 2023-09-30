@@ -7,16 +7,10 @@ use std::{
 };
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use crate::{MAX_CHUNK_SIZE, HelperBuf};
+use crate::{HelperBuf, MAX_CHUNK_SIZE};
 
 pub trait AsyncWritable: AsyncWrite + Send + Unpin {}
 impl<T: AsyncWrite + Send + Unpin> AsyncWritable for T {}
-
-#[derive(PartialEq, Debug)]
-enum Mode {
-    Collecting,
-    Flushing,
-}
 
 #[pin_project]
 pub struct EncryptedWriter<T: AsyncWritable> {
@@ -24,7 +18,7 @@ pub struct EncryptedWriter<T: AsyncWritable> {
     writer: T,
     encryptor: EncryptorLE31<ChaCha20Poly1305>,
     bytes: HelperBuf,
-    mode: Mode,
+    is_flushing: bool,
 }
 
 impl<T: AsyncWritable> EncryptedWriter<T> {
@@ -38,7 +32,7 @@ impl<T: AsyncWritable> EncryptedWriter<T> {
             writer,
             encryptor,
             bytes: HelperBuf::with_capacity(MAX_CHUNK_SIZE),
-            mode: Mode::Flushing,
+            is_flushing: true,
         })
     }
 
@@ -46,33 +40,33 @@ impl<T: AsyncWritable> EncryptedWriter<T> {
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), std::io::Error>> {
-        assert_eq!(self.mode, Mode::Flushing);
+        debug_assert!(self.is_flushing);
 
         let mut this = self.project();
 
         while !this.bytes.data().is_empty() {
             let bytes_wrote = ready!(this.writer.as_mut().poll_write(cx, this.bytes.data()))?;
-            this.bytes.advance_cursor(bytes_wrote);   
+            this.bytes.advance_cursor(bytes_wrote);
         }
 
-        *this.mode = Mode::Collecting;
+        *this.is_flushing = false;
         this.bytes.buf.extend_from_slice(&[0, 0, 0, 0]);
         Poll::Ready(Ok(()))
     }
 
     fn start_flushing(&mut self) -> std::io::Result<()> {
-
-
         let mut msg = self.bytes.buf.split_off(4);
 
         self.encryptor
             .encrypt_next_in_place(&[], &mut msg)
             .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, "Decryption error"))?;
 
-        self.bytes.buf.copy_from_slice(&u32::try_from(msg.len()).unwrap().to_be_bytes());
+        let len = u32::try_from(msg.len()).unwrap().to_be_bytes();
+
+        self.bytes.buf.copy_from_slice(&len);
         self.bytes.buf.unsplit(msg);
 
-        self.mode = Mode::Flushing;
+        self.is_flushing = true;
         Ok(())
     }
 }
@@ -84,7 +78,7 @@ impl<T: AsyncWritable> AsyncWrite for EncryptedWriter<T> {
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
         debug_assert!(self.bytes.buf.capacity() == MAX_CHUNK_SIZE);
-        if self.mode == Mode::Flushing {
+        if self.is_flushing {
             ready!(self.as_mut().poll_flush_local(cx))?;
         }
 
@@ -96,17 +90,15 @@ impl<T: AsyncWritable> AsyncWrite for EncryptedWriter<T> {
             self.start_flushing()?;
         }
 
-        
-
         Poll::Ready(Ok(bytes_taken))
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        if self.mode != Mode::Flushing && !self.bytes.data().is_empty() {
+        if !self.is_flushing && !self.bytes.data().is_empty() {
             self.start_flushing()?;
         }
-        
-        if self.mode == Mode::Flushing {
+
+        if self.is_flushing {
             ready!(self.as_mut().poll_flush_local(cx))?;
         }
         let this = self.project();
