@@ -7,16 +7,16 @@ use std::str::Utf8Error;
 
 use protocol::{deserialize_from, serialize_into, FileMeta, Message, LocalFileMeta};
 use thiserror::Error;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncBufRead, AsyncWrite};
 
 
 const RECEIVED_FILE_FOLDER: &str = "gday_received/";
 
-pub trait AsyncReadable: AsyncRead + Send + Unpin {}
-impl<T: AsyncRead + Send + Unpin> AsyncReadable for T {}
+pub trait AsyncReadable: AsyncBufRead + Unpin {}
+impl<T: AsyncBufRead + Unpin> AsyncReadable for T {}
 
-pub trait AsyncWritable: AsyncWrite + Send + Unpin {}
-impl<T: AsyncWrite + Send + Unpin> AsyncWritable for T {}
+pub trait AsyncWritable: AsyncWrite + Unpin {}
+impl<T: AsyncWrite + Unpin> AsyncWritable for T {}
 
 
 

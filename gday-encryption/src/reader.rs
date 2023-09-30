@@ -6,7 +6,7 @@ use std::{
     pin::Pin,
     task::{ready, Context, Poll},
 };
-use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+use tokio::io::{AsyncBufRead, AsyncRead, AsyncReadExt, ReadBuf};
 
 use crate::{HelperBuf, MAX_CHUNK_SIZE};
 
@@ -53,6 +53,7 @@ impl<T: AsyncReadable> EncryptedReader<T> {
         let spare = this.ciphertext.buf.spare_capacity_mut();
         let mut read_buf = ReadBuf::uninit(spare);
         ready!(this.reader.poll_read(cx, &mut read_buf))?;
+
         let new_len = old_cipherbuf_len + read_buf.filled().len();
         unsafe { this.ciphertext.buf.set_len(new_len) }
 
@@ -83,6 +84,37 @@ impl<T: AsyncReadable> EncryptedReader<T> {
 
         Poll::Ready(Ok(()))
     }
+
+    /// True if eof, false if not. Stops reading when cleartext has length greater than max_bytes
+    fn read_if_necessary(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        max_bytes: Option<usize>,
+    ) -> Poll<std::io::Result<bool>> {
+        let mut bytes_target = self.cleartext.buf.capacity() - self.cleartext.cursor;
+
+        if let Some(bytes_wanted) = max_bytes {
+            bytes_target = std::cmp::min(bytes_target, bytes_wanted);
+        }
+
+        while bytes_target > self.cleartext.data().len() {
+            let poll = self.as_mut().inner_read(cx)?;
+            if matches!(poll, Poll::Ready(_))
+                && self.ciphertext.data().is_empty()
+                && self.cleartext.data().is_empty()
+            {
+                return Poll::Ready(Ok(true));
+            } else if poll == Poll::Pending {
+                if self.cleartext.data().is_empty() {
+                    return Poll::Pending;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        Poll::Ready(Ok(false))
+    }
 }
 
 impl<T: AsyncReadable> AsyncRead for EncryptedReader<T> {
@@ -94,17 +126,9 @@ impl<T: AsyncReadable> AsyncRead for EncryptedReader<T> {
         debug_assert!(self.cleartext.buf.capacity() == MAX_CHUNK_SIZE);
         debug_assert!(self.ciphertext.buf.capacity() == 2 * MAX_CHUNK_SIZE);
 
-        if buf.remaining() > self.cleartext.data().len() {
-            if self.cleartext.data().is_empty() {
-                while self.cleartext.data().is_empty() {
-                    ready!(self.as_mut().inner_read(cx))?;
-                    if self.cleartext.data().is_empty() && self.ciphertext.data().is_empty() {
-                        return Poll::Ready(Ok(()));
-                    }
-                }
-            } else {
-                let _ = self.as_mut().inner_read(cx)?;
-            }
+        let is_eof = ready!(self.as_mut().read_if_necessary(cx, Some(buf.remaining()))?);
+        if is_eof {
+            return Poll::Ready(Ok(()));
         }
 
         let chunk = self.cleartext.data();
@@ -115,5 +139,24 @@ impl<T: AsyncReadable> AsyncRead for EncryptedReader<T> {
         self.cleartext.advance_cursor(num_bytes);
 
         Poll::Ready(Ok(()))
+    }
+}
+
+impl<T: AsyncReadable> AsyncBufRead for EncryptedReader<T> {
+    fn poll_fill_buf(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<std::io::Result<&[u8]>> {
+        let is_eof = ready!(self.as_mut().read_if_necessary(cx, None)?);
+        if is_eof {
+            Poll::Ready(Ok(&[]))
+        } else {
+            let this = self.project();
+            Poll::Ready(Ok(this.cleartext.data()))
+        }
+    }
+
+    fn consume(mut self: Pin<&mut Self>, amt: usize) {
+        self.cleartext.advance_cursor(amt);
     }
 }
