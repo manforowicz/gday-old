@@ -8,7 +8,7 @@ use std::{
 };
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncReadExt, ReadBuf};
 
-use crate::{HelperBuf, MAX_CHUNK_SIZE};
+use crate::{HelperBuf, MAX_CHUNK_SIZE, CIPHERTEXT_OVERHEAD};
 
 pub trait AsyncReadable: AsyncRead + Send + Unpin {}
 impl<T: AsyncRead + Send + Unpin> AsyncReadable for T {}
@@ -102,7 +102,7 @@ impl<T: AsyncReadable> EncryptedReader<T> {
         debug_assert!(self.ciphertext.buf.capacity() == 2 * MAX_CHUNK_SIZE);
 
         let mut bytes_amount =
-            self.cleartext.data().len() + self.cleartext.spare_capacity_len() - 16;
+            self.cleartext.data().len() + self.cleartext.spare_capacity_len() - CIPHERTEXT_OVERHEAD;
 
         if let Some(wanted_bytes) = wanted_bytes {
             bytes_amount = std::cmp::min(bytes_amount, wanted_bytes);
@@ -138,7 +138,7 @@ impl<T: AsyncReadable> AsyncRead for EncryptedReader<T> {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        let is_eof = ready!(self.as_mut().read_if_necessary(cx, Some(buf.remaining()))?);
+        let is_eof = ready!(self.as_mut().read_if_necessary(cx, Some(buf.remaining())))?;
         if is_eof {
             return Poll::Ready(Ok(()));
         }
@@ -159,7 +159,7 @@ impl<T: AsyncReadable> AsyncBufRead for EncryptedReader<T> {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<std::io::Result<&[u8]>> {
-        let is_eof = ready!(self.as_mut().read_if_necessary(cx, None)?);
+        let is_eof = ready!(self.as_mut().read_if_necessary(cx, None))?;
         if is_eof {
             Poll::Ready(Ok(&[]))
         } else {

@@ -10,6 +10,8 @@ pub use writer::EncryptedWriter;
 
 const MAX_CHUNK_SIZE: usize = 8 * 1024;
 
+const CIPHERTEXT_OVERHEAD: usize = 16;
+
 struct HelperBuf {
     buf: BytesMut,
     cursor: usize

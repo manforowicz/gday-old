@@ -7,7 +7,7 @@ use std::{
 };
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use crate::{HelperBuf, MAX_CHUNK_SIZE};
+use crate::{HelperBuf, CIPHERTEXT_OVERHEAD, MAX_CHUNK_SIZE};
 
 pub trait AsyncWritable: AsyncWrite + Send + Unpin {}
 impl<T: AsyncWrite + Send + Unpin> AsyncWritable for T {}
@@ -82,11 +82,14 @@ impl<T: AsyncWritable> AsyncWrite for EncryptedWriter<T> {
             ready!(self.as_mut().poll_flush_local(cx))?;
         }
 
-        let bytes_taken = std::cmp::min(buf.len(), self.bytes.buf.spare_capacity_mut().len() - 16);
+        let bytes_taken = std::cmp::min(
+            buf.len(),
+            self.bytes.spare_capacity_len() - CIPHERTEXT_OVERHEAD,
+        );
 
         self.bytes.buf.extend_from_slice(&buf[0..bytes_taken]);
 
-        if self.bytes.buf.spare_capacity_mut().len() <= 16 {
+        if self.bytes.spare_capacity_len() == CIPHERTEXT_OVERHEAD {
             self.start_flushing()?;
         }
 
@@ -97,17 +100,14 @@ impl<T: AsyncWritable> AsyncWrite for EncryptedWriter<T> {
         if !self.is_flushing && !self.bytes.data().is_empty() {
             self.start_flushing()?;
         }
-
         if self.is_flushing {
             ready!(self.as_mut().poll_flush_local(cx))?;
         }
-        let this = self.project();
-        this.writer.poll_flush(cx)
+        self.project().writer.poll_flush(cx)
     }
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         ready!(self.as_mut().poll_flush(cx))?;
-        let this = self.project();
-        this.writer.poll_shutdown(cx)
+        self.project().writer.poll_shutdown(cx)
     }
 }
