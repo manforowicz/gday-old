@@ -55,7 +55,6 @@ async fn main() {
                 exit(1)
             });
             let (mut writer, mut reader) = start_connection().await;
-            println!("Encryption established baby!");
             gday_chat::creator_run(&mut reader, &mut writer, Some(files))
                 .await
                 .unwrap_or_else(|err| {
@@ -66,7 +65,6 @@ async fn main() {
 
         Commands::Chat => {
             let (mut writer, mut reader) = start_connection().await;
-            println!("Encryption established baby!");
             gday_chat::creator_run(&mut reader, &mut writer, None)
                 .await
                 .unwrap_or_else(|err| {
@@ -77,7 +75,6 @@ async fn main() {
 
         Commands::Join { password } => {
             let (mut writer, mut reader) = join_connection(password).await;
-            println!("Encryption established baby!");
             gday_chat::not_creator_run(&mut reader, &mut writer)
                 .await
                 .unwrap_or_else(|err| {

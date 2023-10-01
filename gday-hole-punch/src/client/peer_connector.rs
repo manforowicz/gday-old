@@ -1,15 +1,15 @@
-use futures::{stream::FuturesUnordered, StreamExt};
 use rand::seq::SliceRandom;
 use sha2::{Digest, Sha256};
 use socket2::{SockRef, TcpKeepalive};
 use spake2::{Ed25519Group, Identity, Password, Spake2};
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, pin::Pin, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpSocket, TcpStream},
 };
 
 use crate::FullContact;
+use std::future::Future;
 
 use super::ClientError;
 
@@ -32,43 +32,39 @@ impl PeerConnector {
         self.peer
     }
 
-    pub async fn connect_to_peer(self, shared_secret: PeerSecret) -> Result<PeerConnection, ClientError> {
+    pub async fn connect_to_peer(
+        self,
+        shared_secret: PeerSecret,
+    ) -> std::io::Result<PeerConnection> {
         let c = self.is_creator;
         let p = shared_secret;
-        let mut futs = FuturesUnordered::new();
-
-        //TODO: REMOVE TOKIO SPAwNS HERE. THEY'RE UNNECESSARY
+        let mut futs: Vec<Pin<Box<dyn Future<Output = std::io::Result<PeerConnection>>>>> =
+            Vec::with_capacity(6);
 
         if let Some(local) = self.local.private.v6 {
-            futs.push(tokio::spawn(try_accept(local, p, c)));
+            futs.push(Box::pin(try_accept(local, p, c)));
 
             if let Some(peer) = self.peer.private.v6 {
-                futs.push(tokio::spawn(try_connect(local, peer, p, c)));
+                futs.push(Box::pin(try_connect(local, peer, p, c)));
             }
             if let Some(peer) = self.peer.public.v6 {
-                futs.push(tokio::spawn(try_connect(local, peer, p, c)));
+                futs.push(Box::pin(try_connect(local, peer, p, c)));
             }
         }
 
         if let Some(local) = self.local.private.v4 {
-            futs.push(tokio::spawn(try_accept(local, p, c)));
+            futs.push(Box::pin(try_accept(local, p, c)));
 
             if let Some(peer) = self.peer.private.v4 {
-                futs.push(tokio::spawn(try_connect(local, peer, p, c)));
+                futs.push(Box::pin(try_connect(local, peer, p, c)));
             }
 
             if let Some(peer) = self.peer.public.v4 {
-                futs.push(tokio::spawn(try_connect(local, peer, p, c)));
+                futs.push(Box::pin(try_connect(local, peer, p, c)));
             }
         }
 
-        while let Some(result) = futs.next().await {
-            if let Ok(Ok(connection)) = result {
-                return Ok(connection);
-            }
-        }
-
-        Err(ClientError::PeerConnectFailed)
+        Ok(futures::future::select_ok(futs).await?.0)
     }
 }
 
@@ -87,7 +83,7 @@ async fn try_connect<T: Into<SocketAddr>>(
     peer: T,
     peer_id: PeerSecret,
     is_creator: bool,
-) -> Result<PeerConnection, std::io::Error> {
+) -> std::io::Result<PeerConnection> {
     let local = local.into();
     let peer = peer.into();
     loop {

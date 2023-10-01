@@ -15,7 +15,7 @@ pub fn confirm_receive(files: &[FileMeta]) -> Result<Vec<bool>, std::io::Error> 
     println!("Peer wants to send you {} files:", files.len());
 
     for meta in files {
-        print!("{:?}", meta.path);
+        print!("{} ({})", meta.path.display(), HumanBytes(meta.size));
         total_size += meta.size;
 
         if file_exists(meta) {
