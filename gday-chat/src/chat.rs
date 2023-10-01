@@ -1,10 +1,8 @@
 use crate::{AsyncReadable, AsyncWritable, Error};
 use rustyline_async::{Readline, ReadlineEvent, SharedWriter};
-use std::io::{Write, ErrorKind};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    try_join,
-};
+use std::io::Write;
+use tokio::io::{AsyncWriteExt, AsyncBufReadExt};
+use crossterm::style::Stylize;
 
 pub async fn start_chat(
     reader: &mut impl AsyncReadable,
@@ -12,49 +10,42 @@ pub async fn start_chat(
 ) -> Result<(), Error> {
     let (user_input, terminal) = Readline::new("you: ".to_string()).unwrap();
 
-    let future_a = chat_listen(reader, terminal);
-    let future_b = chat_talk(writer, user_input);
+    let future_a = chat_listen(reader, terminal.clone());
+    let future_b = chat_talk(writer, user_input, terminal);
 
-    try_join!(future_a, future_b)?;
-    Ok(())
+    tokio::select!(
+        val = future_a => val,
+        val = future_b => val
+    )
 }
 
 async fn chat_listen(
     reader: &mut impl AsyncReadable,
     mut terminal: SharedWriter,
 ) -> Result<(), Error> {
-    let mut tmp_buf = [0; 1_000];
 
-    loop {
-        let bytes_read = reader.read(&mut tmp_buf).await?;
-        if bytes_read == 0 {
-            return Err(std::io::Error::new(ErrorKind::UnexpectedEof, "Peer quit"))?;
-        }
-        let text = std::str::from_utf8(&tmp_buf[..bytes_read])?;
-        for line in text.lines() {
-            writeln!(terminal, "peer: {line}")?;
-        }
+    let mut lines = reader.lines();
+
+    while let Some(line) = lines.next_line().await? {
+        writeln!(terminal, "{} {}", "peer:".magenta(), line.magenta())?;
     }
+    Ok(())
 }
 
 async fn chat_talk(
     writer: &mut impl AsyncWritable,
-    mut user_input: Readline
+    mut user_input: Readline,
+    mut terminal: SharedWriter
 ) -> Result<(), Error> {
-    loop {
-        let event = user_input.readline().await?;
 
-        match event {
-            ReadlineEvent::Line(text) => {
-                if !text.trim().is_empty() {
-                    writer.write_all(text.as_bytes()).await?;
-                    writer.flush().await?;
-                    user_input.add_history_entry(text);
-                }
-            }
-            _ => {
-                return Ok(());
-            }
+    while let ReadlineEvent::Line(text) = user_input.readline().await? {
+        if !text.trim().is_empty() {
+            user_input.add_history_entry(text.to_string());
+            writer.write_all(text.as_bytes()).await?;
+            writer.flush().await?;
+            terminal.flush()?;
         }
     }
+
+    Ok(())
 }
