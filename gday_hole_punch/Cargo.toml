@@ -5,10 +5,6 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-
-client = ["dep:futures", "dep:spake2", "dep:socket2", "dep:sha2"]
-server = []
 
 [dependencies]
 async-stream = "0.3.5"
@@ -28,3 +24,7 @@ tokio = { version = "1.32.0", features = [
     "net",
 ] }
 tokio-rustls = "0.24.1"
+
+[features]
+client = ["dep:futures", "dep:spake2", "dep:socket2", "dep:sha2"]
+server = []

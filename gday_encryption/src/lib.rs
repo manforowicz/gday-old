@@ -14,7 +14,7 @@ const CIPHERTEXT_OVERHEAD: usize = 16;
 
 struct HelperBuf {
     buf: BytesMut,
-    cursor: usize
+    cursor: usize,
 }
 
 impl HelperBuf {

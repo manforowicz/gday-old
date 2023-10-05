@@ -1,12 +1,16 @@
 use crate::{Contact, FullContact, RoomId};
 use rand::seq::SliceRandom;
+use thiserror::Error;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::oneshot;
 
-use super::ServerError;
+
+#[derive(Error, Debug)]
+#[error("No room with this id exists.")]
+pub struct NoSuchRoomId;
 
 #[derive(Default)]
 struct Client {
@@ -19,7 +23,6 @@ pub struct State {
     /// Maps room_id to clients
     rooms: Arc<Mutex<HashMap<RoomId, [Client; 2]>>>,
 }
-
 
 fn generate_room_id() -> RoomId {
     let mut rng = rand::thread_rng();
@@ -53,9 +56,11 @@ impl State {
         is_creator: bool,
         endpoint: SocketAddr,
         public: bool,
-    ) -> Result<(), ServerError> {
+    ) -> Result<(), NoSuchRoomId> {
         let mut rooms = self.rooms.lock().unwrap();
-        let room = rooms.get_mut(&room_id).ok_or(ServerError::NoSuchRoomExists)?;
+        let room = rooms
+            .get_mut(&room_id)
+            .ok_or(NoSuchRoomId)?;
         let contact = &mut room[usize::from(is_creator)].contact;
 
         let contact = if public {
@@ -80,9 +85,11 @@ impl State {
         &mut self,
         room_id: RoomId,
         is_creator: bool,
-    ) -> Result<oneshot::Receiver<(Contact, FullContact)>, ServerError> {
+    ) -> Result<oneshot::Receiver<(Contact, FullContact)>, NoSuchRoomId> {
         let mut rooms = self.rooms.lock().unwrap();
-        let room = rooms.get_mut(&room_id).ok_or(ServerError::NoSuchRoomExists)?;
+        let room = rooms
+            .get_mut(&room_id)
+            .ok_or(NoSuchRoomId)?;
 
         let client_i = usize::from(is_creator);
         let peer_i = usize::from(!is_creator);

@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.4.4", features = ["derive"] }
-gday-hole-punch = { path = "../gday-hole-punch", features = ["server"] }
+gday-hole-punch = { path = "../gday_hole_punch", features = ["server"] }
 socket2 = "0.5.4"
 tokio = { version = "1.32.0", features = ["rt-multi-thread", "macros"] }
 tokio-rustls = "0.24.1"

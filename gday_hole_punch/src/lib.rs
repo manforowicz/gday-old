@@ -1,4 +1,23 @@
+#![feature(doc_cfg)]
 #![allow(dead_code)]
+
+//! # Welcome to gday-hole-punch
+//! - Bullet
+//! - Bullet
+//! - Test
+//! # Examples
+//! A simple test:
+//! ```
+//! use gday_hole_punch::{client, RoomId, ContactSharer};
+//! 
+//! let (sharer, room_id) = ContactSharer::create_room(server_addr)?;
+//! println!("Here's the id of my room: {room_id}");
+//! let connector = sharer.get_peer_connector()?;
+//! let weak_shared_secret = b"A5P";
+//! connector.connect_to_peer(weak_shared_secret);
+//! let (peer_tcp_stream, strong_shared_secret) = connector.connect_to_peer()?;
+//! ```
+//! It works!
 
 use postcard::{from_bytes, to_slice};
 use serde::{Deserialize, Serialize};
@@ -9,17 +28,20 @@ use tokio::{
     net::TcpStream,
 };
 
-#[cfg(feature = "server")]
+#[doc(cfg(feature = "server"))]
 pub mod server;
 
-#[cfg(feature = "client")]
+#[doc(cfg(feature = "client"))]
 pub mod client;
 
+/// Both peers send the server the same [`RoomId`] to get each other's contacts.
+/// 
+/// 6 random ascii characters. Each character will be an uppercase letter A through Z or a digit 0 through 9.
 pub type RoomId = [u8; 6];
 
+/// A message from [`client`] -> [`server`]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
-
-pub enum ClientMessage {
+enum ClientMessage {
     /// Request the server to create a room
     CreateRoom,
     /// (room_id, user is creator of room?, private contact)
@@ -33,8 +55,9 @@ pub enum ClientMessage {
     DoneSending { room_id: RoomId, is_creator: bool },
 }
 
+/// A message from [`server`] -> [`client`]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
-pub enum ServerMessage {
+enum ServerMessage {
     /// Room successfully created
     /// (room_password, user_id)
     RoomCreated(RoomId),
@@ -47,15 +70,25 @@ pub enum ServerMessage {
     ErrorNoSuchRoomID,
 }
 
+/// The addresses of a single network endpoint.
+///
+/// An endpoint may have IPv6, IPv4, none, or both.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Copy, Default)]
 pub struct Contact {
+    /// Endpoint's IPv6 socket address
     pub v6: Option<SocketAddrV6>,
+    /// Endpiont's IPv4 socket address
     pub v4: Option<SocketAddrV4>,
 }
 
+/// The public and private contacts of an entity.
+///
+/// `public` is different from `private` when the entity is behind [NAT (network address translation)](https://en.wikipedia.org/wiki/Network_address_translation).
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Copy, Default)]
 pub struct FullContact {
+    /// The peer's private contact in it's local network.
     pub private: Contact,
+    /// The entity's public contact visible to the public internet.
     pub public: Contact,
 }
 

@@ -3,9 +3,9 @@ edition = "2021"
 resolver = "2"
 
 members = [
-    "gday-hole-punch",
-    "gday-server",
-    "gday-encryption",
-    "gday-chat",
+    "gday_hole_punch",
+    "gday_server",
+    "gday_encryption",
+    "gday_chat",
     "gday"
 ]

@@ -23,8 +23,6 @@ impl ConnectionHandler {
     }
 
     async fn handle_message(&mut self) -> Result<(), ServerError> {
-        //let msg = deserialize_from(&mut self.stream, &mut self.tmp_buf).await;
-
         let msg: Result<_, _> = self.messenger.next_msg().await;
 
         match msg {

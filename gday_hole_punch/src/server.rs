@@ -13,18 +13,8 @@ use tokio_rustls::TlsAcceptor;
 
 #[derive(Error, Debug)]
 pub enum ServerError {
-
-    #[error("There is no room with this room_id")]
-    NoSuchRoomExists,
-
     #[error("IO Error: {0}")]
     IO(#[from] std::io::Error),
-
-    #[error("Peer cryptographical error")]
-    Cyrptographical,
-
-    #[error("Rustls error")]
-    Rustls(#[from] tokio_rustls::rustls::Error),
 
     #[error("Serialization error {0}")]
     SerializationError(#[from] SerializationError),

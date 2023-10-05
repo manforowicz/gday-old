@@ -13,7 +13,7 @@ use crate::{HelperBuf, MAX_CHUNK_SIZE, CIPHERTEXT_OVERHEAD};
 pub trait AsyncReadable: AsyncRead + Send + Unpin {}
 impl<T: AsyncRead + Send + Unpin> AsyncReadable for T {}
 
-fn peek_cipher_chunk(buf: &mut HelperBuf) -> Option<&[u8]> {
+fn peek_cipher_chunk(buf: &HelperBuf) -> Option<&[u8]> {
     if let Some(len) = buf.data().get(0..4) {
         let len = u32::from_be_bytes(len.try_into().unwrap()) as usize;
         buf.data().get(4..4 + len)
