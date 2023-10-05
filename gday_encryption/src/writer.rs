@@ -103,6 +103,7 @@ impl<T: AsyncWritable> AsyncWrite for EncryptedWriter<T> {
         if self.is_flushing {
             ready!(self.as_mut().poll_flush_local(cx))?;
         }
+        println!("manual flush");
         self.project().writer.poll_flush(cx)
     }
 

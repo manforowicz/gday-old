@@ -52,7 +52,6 @@ impl<T: AsyncReadable> EncryptedReader<T> {
 
         let old_cipherbuf_len = this.ciphertext.buf.len();
         let spare = this.ciphertext.buf.spare_capacity_mut();
-        debug_assert!(!spare.is_empty());
         let mut read_buf = ReadBuf::uninit(spare);
         ready!(this.reader.poll_read(cx, &mut read_buf))?;
 
@@ -70,6 +69,8 @@ impl<T: AsyncReadable> EncryptedReader<T> {
             if this.cleartext.spare_capacity_len() < msg_len {
                 return Ok(());
             }
+
+            println!("msg_len: {msg_len}");
    
             let mut decryption_space = this.cleartext.buf.split_off(this.cleartext.buf.len());
 
@@ -102,7 +103,7 @@ impl<T: AsyncReadable> EncryptedReader<T> {
         debug_assert!(self.ciphertext.buf.capacity() == 2 * MAX_CHUNK_SIZE);
 
         let mut bytes_amount =
-            self.cleartext.data().len() + self.cleartext.spare_capacity_len() - CIPHERTEXT_OVERHEAD;
+            self.cleartext.buf.capacity();
 
         if let Some(wanted_bytes) = wanted_bytes {
             bytes_amount = std::cmp::min(bytes_amount, wanted_bytes);
