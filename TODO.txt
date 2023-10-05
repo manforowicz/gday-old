@@ -1,0 +1,15 @@
+PENDING:
+- Remove CIPHERTEXT_OVERHEAD from gday_encryption. Make it found from chacha20poly1305.
+- Implement my own readline based on async rustyline, and put it in my own crate.
+- Comment all my code.
+- Allow users to use their own servers.
+- Re-generate TLS certificates.
+- Color text.
+- Fix unwanted encrypted writer flushing due to tokio io copy.
+- Improve clap help messages.
+- Remove unneeded features and dependencies.
+- Add basic tests to all crates.
+
+
+
+DONE:

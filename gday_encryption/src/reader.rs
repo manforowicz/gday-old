@@ -8,7 +8,7 @@ use std::{
 };
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncReadExt, ReadBuf};
 
-use crate::{HelperBuf, MAX_CHUNK_SIZE, CIPHERTEXT_OVERHEAD};
+use crate::{HelperBuf, MAX_CHUNK_SIZE};
 
 pub trait AsyncReadable: AsyncRead + Send + Unpin {}
 impl<T: AsyncRead + Send + Unpin> AsyncReadable for T {}
@@ -69,8 +69,6 @@ impl<T: AsyncReadable> EncryptedReader<T> {
             if this.cleartext.spare_capacity_len() < msg_len {
                 return Ok(());
             }
-
-            println!("msg_len: {msg_len}");
    
             let mut decryption_space = this.cleartext.buf.split_off(this.cleartext.buf.len());
 
