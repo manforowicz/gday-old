@@ -91,7 +91,7 @@ async fn main() {
 }
 
 /// (IPV6, IPV4)
-async fn connect_to_server() -> (TlsStream<TcpStream>, TlsStream<TcpStream>) {
+async fn connect_to_server() -> (Option<TlsStream<TcpStream>>, Option<TlsStream<TcpStream>>) {
     let root_cert = include_bytes!("cert_authority.der").to_vec();
     let tls_conn = server_connector::get_tls_connector(root_cert).unwrap_or_else(|err| {
         eprintln!("{err}");
@@ -101,16 +101,10 @@ async fn connect_to_server() -> (TlsStream<TcpStream>, TlsStream<TcpStream>) {
     (
         server_connector::connect(SERVER_V6, SERVER_NAME, &tls_conn)
             .await
-            .unwrap_or_else(|err| {
-                println!("Couldn't connect to server: {err}");
-                exit(1)
-            }),
+            .ok(),
         server_connector::connect(SERVER_V4, SERVER_NAME, &tls_conn)
             .await
-            .unwrap_or_else(|err| {
-                println!("Couldn't connect to server: {err}");
-                exit(1)
-            }),
+            .ok(),
     )
 }
 
@@ -119,7 +113,7 @@ async fn start_connection() -> (
     EncryptedReader<OwnedReadHalf>,
 ) {
     let server_conn = connect_to_server().await;
-    let (sharer, room_id) = ContactSharer::create_room(Some(server_conn.0), Some(server_conn.1))
+    let (sharer, room_id) = ContactSharer::create_room(server_conn.0, server_conn.1)
         .await
         .unwrap_or_else(|err| {
             eprintln!("Error connecting to server: {err}");
@@ -164,7 +158,7 @@ async fn join_connection(
 
     let server_conn = connect_to_server().await;
 
-    let sharer = ContactSharer::join_room(Some(server_conn.0), Some(server_conn.1), room_id)
+    let sharer = ContactSharer::join_room(server_conn.0, server_conn.1, room_id)
         .await
         .unwrap_or_else(|err| {
             eprintln!("Error joining room: {err}");

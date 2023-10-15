@@ -30,6 +30,7 @@ pub async fn connect(
     }?;
     let _ = socket.set_reuseaddr(true);
     let _ = socket.set_reuseport(true);
+    
     let tcp_stream = socket.connect(server_addr).await?;
     let tls_stream = tls_connector
         .connect(server_name.try_into().unwrap(), tcp_stream)
