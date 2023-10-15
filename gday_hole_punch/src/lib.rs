@@ -40,7 +40,7 @@ pub mod client;
 /// Both peers send the server the same [`RoomId`] to get each other's contacts.
 ///
 /// 6 random ascii characters. Each character will be an uppercase letter A through Z or a digit 0 through 9.
-pub type RoomId = u32;
+
 
 /// A message from [`client`] -> [`server`]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
@@ -49,13 +49,13 @@ enum ClientMessage {
     CreateRoom,
     /// (room_id, user is creator of room?, private contact)
     SendContact {
-        room_id: RoomId,
+        room_id: u32,
         is_creator: bool,
         private_addr: Option<SocketAddr>,
     },
 
     /// (room_id, user is creator of room?)
-    DoneSending { room_id: RoomId, is_creator: bool },
+    DoneSending { room_id: u32, is_creator: bool },
 }
 
 /// A message from [`server`] -> [`client`]
@@ -63,7 +63,7 @@ enum ClientMessage {
 enum ServerMessage {
     /// Room successfully created
     /// (room_password, user_id)
-    RoomCreated(RoomId),
+    RoomCreated(u32),
     /// (full contact info of peer)
     SharePeerContacts {
         client_public: Contact,

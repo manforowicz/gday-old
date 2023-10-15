@@ -1,6 +1,6 @@
 use crate::server::global_state::State;
-use crate::{SerializationError, Messenger};
 use crate::{ClientMessage, ServerMessage};
+use crate::{Messenger, SerializationError};
 use tokio::net::TcpStream;
 use tokio_rustls::server::TlsStream;
 
@@ -17,8 +17,12 @@ impl ConnectionHandler {
             state,
             messenger: Messenger::with_capacity(stream, 68),
         };
+
         loop {
-            Self::handle_message(&mut this).await?;
+            if let Err(err) = Self::handle_message(&mut this).await {
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                return Err(err);
+            }
         }
     }
 
@@ -40,7 +44,7 @@ impl ConnectionHandler {
                     .update_client(room_id, is_creator, self.messenger.peer_addr()?, true)
                     .is_err()
                 {
-                    self.send(ServerMessage::ErrorNoSuchRoomID).await?;
+                    self.send_no_such_room().await?;
                 }
 
                 if let Some(addr) = private_addr {
@@ -49,7 +53,7 @@ impl ConnectionHandler {
                         .update_client(room_id, is_creator, addr, false)
                         .is_err()
                     {
-                        self.send(ServerMessage::ErrorNoSuchRoomID).await?;
+                        self.send_no_such_room().await?;
                     };
                 }
             }
@@ -58,14 +62,16 @@ impl ConnectionHandler {
                 is_creator,
             }) => {
                 if let Ok(rx) = self.state.set_client_done(room_id, is_creator) {
-                    let (local_public, peer) = rx.await.unwrap();
+                    let Ok((local_public, peer)) = rx.await else {
+                        return Err(ServerError::RoomTimedOut);
+                    };
                     self.send(ServerMessage::SharePeerContacts {
                         client_public: local_public,
                         peer,
                     })
                     .await?;
                 } else {
-                    self.send(ServerMessage::ErrorNoSuchRoomID).await?;
+                    self.send_no_such_room().await?;
                 };
             }
             Err(err) => {
@@ -79,5 +85,12 @@ impl ConnectionHandler {
 
     async fn send(&mut self, msg: ServerMessage) -> Result<(), SerializationError> {
         self.messenger.write_msg(msg).await
+    }
+
+    async fn send_no_such_room(&mut self) -> Result<(), ServerError> {
+        self.messenger
+            .write_msg(ServerMessage::ErrorNoSuchRoomID)
+            .await?;
+        Err(ServerError::NoSuchRoomId)
     }
 }

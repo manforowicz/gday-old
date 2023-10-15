@@ -1,12 +1,11 @@
-use crate::{Contact, FullContact, RoomId};
+use crate::{Contact, FullContact};
 use rand::Rng;
-use thiserror::Error;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use thiserror::Error;
 use tokio::sync::oneshot;
-
 
 #[derive(Error, Debug)]
 #[error("No room with this id exists.")]
@@ -21,13 +20,12 @@ struct Client {
 #[derive(Clone, Default)]
 pub struct State {
     /// Maps room_id to clients
-    rooms: Arc<Mutex<HashMap<RoomId, [Client; 2]>>>,
+    rooms: Arc<Mutex<HashMap<u32, [Client; 2]>>>,
 }
 
 impl State {
-    pub fn create_room(&mut self) -> RoomId {
+    pub fn create_room(&mut self) -> u32 {
         let mut rooms = self.rooms.lock().unwrap();
-
 
         let mut rng = rand::thread_rng();
         let mut room_id = rng.gen_range(0..1_048_576);
@@ -43,15 +41,13 @@ impl State {
 
     pub fn update_client(
         &mut self,
-        room_id: RoomId,
+        room_id: u32,
         is_creator: bool,
         endpoint: SocketAddr,
         public: bool,
     ) -> Result<(), NoSuchRoomId> {
         let mut rooms = self.rooms.lock().unwrap();
-        let room = rooms
-            .get_mut(&room_id)
-            .ok_or(NoSuchRoomId)?;
+        let room = rooms.get_mut(&room_id).ok_or(NoSuchRoomId)?;
         let contact = &mut room[usize::from(is_creator)].contact;
 
         let contact = if public {
@@ -74,13 +70,11 @@ impl State {
 
     pub fn set_client_done(
         &mut self,
-        room_id: RoomId,
+        room_id: u32,
         is_creator: bool,
     ) -> Result<oneshot::Receiver<(Contact, FullContact)>, NoSuchRoomId> {
         let mut rooms = self.rooms.lock().unwrap();
-        let room = rooms
-            .get_mut(&room_id)
-            .ok_or(NoSuchRoomId)?;
+        let room = rooms.get_mut(&room_id).ok_or(NoSuchRoomId)?;
 
         let client_i = usize::from(is_creator);
         let peer_i = usize::from(!is_creator);
@@ -116,7 +110,7 @@ impl State {
         Ok(rx)
     }
 
-    fn room_timeout(&self, room_id: RoomId) {
+    fn room_timeout(&self, room_id: u32) {
         let state = self.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(60 * 10)).await;

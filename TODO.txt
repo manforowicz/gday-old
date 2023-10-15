@@ -9,9 +9,9 @@ PENDING:
 - Improve clap help messages.
 - Remove unneeded features and dependencies.
 - Add basic tests to all crates.
-- End program when peer quits.
+- End program when peer quits during file transfer.
 - Server info shared in room code.
-
+- Improve server security against dos attack.
 
 
 DONE:

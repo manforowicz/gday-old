@@ -18,6 +18,12 @@ pub enum ServerError {
 
     #[error("Serialization error {0}")]
     SerializationError(#[from] SerializationError),
+
+    #[error("Room timed out.")]
+    RoomTimedOut,
+
+    #[error("No such room id exists")]
+    NoSuchRoomId,
 }
 
 pub async fn run(listener: TcpListener, tls_acceptor: TlsAcceptor) -> Result<(), ServerError> {
