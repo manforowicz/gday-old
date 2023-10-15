@@ -19,7 +19,7 @@ impl ConnectionHandler {
         };
 
         loop {
-            if let Err(err) = Self::handle_message(&mut this).await {
+            if let Err(err) = this.handle_message().await {
                 println!("stargin sleep;");
                 tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                 println!("ended sleep");

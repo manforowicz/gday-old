@@ -27,7 +27,7 @@ struct Cli {
 #[tokio::main]
 async fn main() {
     let listener = TcpListener::bind("0.0.0.0:49870").await.unwrap_or_else(|err| {
-        eprintln!("Error binding listener socket: {err}");
+        println!("Error binding listener socket: {err}");
         exit(1)
     });
     let sock2 = SockRef::from(&listener);
@@ -37,14 +37,14 @@ async fn main() {
         .with_retries(10);
 
     sock2.set_tcp_keepalive(&tcp_keepalive).unwrap_or_else(|err| {
-        eprintln!("Error setting TCP KeepAlive: {err}");
+        println!("Error setting TCP KeepAlive: {err}");
         exit(1)
     });
 
     let tls_acceptor = get_tls_acceptor();
 
     if let Err(err) = server::run(listener, tls_acceptor).await {
-        eprintln!("Server stopped due to error: {err}");
+        println!("Server stopped due to error: {err}");
     }
 }
 
@@ -52,12 +52,12 @@ fn get_tls_acceptor() -> tokio_rustls::TlsAcceptor {
     let cli = Cli::parse();
 
     let key_file = fs::read(&cli.key).unwrap_or_else(|err| {
-        eprintln!("Couldn't open key '{}': {}", cli.key.display(), err);
+        println!("Couldn't open key '{}': {}", cli.key.display(), err);
         exit(1)
     });
 
     let cert_file = fs::read(&cli.certificate).unwrap_or_else(|err| {
-        eprintln!(
+        println!(
             "Couldn't open certificate '{}': {}",
             cli.certificate.display(),
             err
@@ -75,7 +75,7 @@ fn get_tls_acceptor() -> tokio_rustls::TlsAcceptor {
         .unwrap();
 
     tokio_rustls::TlsAcceptor::try_from(Arc::new(tls_config)).unwrap_or_else(|err| {
-        eprintln!("Error making TLS Acceptor: {err}");
+        println!("Error making TLS Acceptor: {err}");
         exit(1);
     })
 }

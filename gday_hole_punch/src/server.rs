@@ -1,6 +1,12 @@
 mod connection_handler;
 mod global_state;
 
+use std::{
+    collections::HashMap,
+    net::IpAddr,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use crate::SerializationError;
 
@@ -9,7 +15,6 @@ use connection_handler::ConnectionHandler;
 use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
-
 
 #[derive(Error, Debug)]
 pub enum ServerError {
@@ -28,12 +33,28 @@ pub enum ServerError {
 
 pub async fn run(listener: TcpListener, tls_acceptor: TlsAcceptor) -> Result<(), ServerError> {
     let state = State::default();
+
+    let blocked: Arc<Mutex<HashMap<IpAddr, Instant>>> = Arc::new(Mutex::new(HashMap::new()));
+
     loop {
-        let (stream, _addr) = listener.accept().await.unwrap();
+        let (stream, addr) = listener.accept().await.unwrap();
         let tls_acceptor = tls_acceptor.clone();
         let state = state.clone();
+        let blocked = blocked.clone();
         tokio::spawn(async move {
             let tls_stream = tls_acceptor.accept(stream).await?;
+
+            let is_blocked = blocked.lock().unwrap().get(&addr.ip()).copied();
+
+            if let Some(time) = is_blocked {
+                tokio::time::sleep(time - Instant::now()).await;
+            }
+
+            blocked
+                .lock()
+                .unwrap()
+                .insert(addr.ip(), Instant::now() + Duration::from_secs(5));
+
             ConnectionHandler::start(state, tls_stream).await
         });
     }
