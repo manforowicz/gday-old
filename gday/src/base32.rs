@@ -35,12 +35,9 @@ fn u32_to_str(num: u32) -> String {
     let mut num = num as usize;
     let mut s = Vec::<u8>::new();
 
-    let mut place_value = 32;
-
     while num != 0 {
-        s.push(ALPHABET[num % place_value]);
-        num -= num % place_value;
-        place_value *= 32;
+        s.push(ALPHABET[num % 32]);
+        num /= 32;
     }
 
     s.reverse();
@@ -56,8 +53,10 @@ pub fn to_string(vals: &[u32]) -> String {
     let mut s = String::new();
 
     for val in vals {
+        if !s.is_empty() {
+            s.push('.');
+        }
         s.push_str(&u32_to_str(*val));
-        s.push('.');
     }
     s
 }
