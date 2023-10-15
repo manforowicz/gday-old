@@ -42,6 +42,7 @@ async fn chat_talk(
         if !text.trim().is_empty() {
             user_input.add_history_entry(text.to_string());
             writer.write_all(text.as_bytes()).await?;
+            writer.write_all(&[b'\n']).await?;
             writer.flush().await?;
             terminal.flush()?;
         }
