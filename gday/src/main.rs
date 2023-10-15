@@ -1,6 +1,7 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(dead_code)]
 
+mod base32;
 mod server_connector;
 
 use clap::{Parser, Subcommand};
@@ -121,40 +122,23 @@ async fn start_connection() -> (
         });
 
     let peer_secret = random_peer_secret();
-    let mut password = room_id.into_iter().chain(peer_secret).collect::<Vec<u8>>();
+    let password = base32::to_string(&[0, room_id, peer_secret]);
 
-    password.insert(3, b'-');
-    password.insert(6, b'-');
-
-    let password = String::from_utf8(password).unwrap();
     println!("Have your peer run: \"gday join {password}\". Password is case-insensitive.");
 
     establish_peer_connection(sharer, peer_secret).await
 }
 
 async fn join_connection(
-    mut password: String,
+    password: String,
 ) -> (
     EncryptedWriter<OwnedWriteHalf>,
     EncryptedReader<OwnedReadHalf>,
 ) {
-    password.retain(|c| !c.is_whitespace() && c != '-');
-    let password = password.to_uppercase();
-    let password: [u8; 9] = password.as_bytes().try_into().unwrap_or_else(|_| {
-        eprintln!("Password must be exactly 9 characters!");
+    let [_, room_id, peer_secret] = base32::from_string(&password)[..] else {
+        println!("Code must be seperated by two \".\"");
         exit(1)
-    });
-
-    if !password
-        .iter()
-        .all(|c| b"ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890".contains(c))
-    {
-        eprintln!("Password must be alphanumeric!");
-        exit(1)
-    }
-
-    let room_id = password[0..6].try_into().unwrap();
-    let peer_secret = password[6..9].try_into().unwrap();
+    };
 
     let server_conn = connect_to_server().await;
 

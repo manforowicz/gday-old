@@ -38,7 +38,7 @@ pub mod client;
 /// Both peers send the server the same [`RoomId`] to get each other's contacts.
 ///
 /// 6 random ascii characters. Each character will be an uppercase letter A through Z or a digit 0 through 9.
-pub type RoomId = [u8; 6];
+pub type RoomId = u32;
 
 /// A message from [`client`] -> [`server`]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]

@@ -1,4 +1,4 @@
-use rand::seq::SliceRandom;
+use rand::Rng;
 use sha2::{Digest, Sha256};
 use socket2::{SockRef, TcpKeepalive};
 use spake2::{Ed25519Group, Identity, Password, Spake2};
@@ -13,7 +13,7 @@ use std::future::Future;
 
 use super::ClientError;
 
-pub type PeerSecret = [u8; 3];
+pub type PeerSecret = u32;
 
 type PeerConnection = (TcpStream, [u8; 32]);
 
@@ -70,12 +70,7 @@ impl PeerConnector {
 
 pub fn random_peer_secret() -> PeerSecret {
     let mut rng = rand::thread_rng();
-    let characters = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let mut id = [0; 3];
-    for letter in &mut id {
-        *letter = *characters.choose(&mut rng).unwrap();
-    }
-    id
+    rng.gen_range(0..32768)
 }
 
 async fn try_connect<T: Into<SocketAddr>>(
@@ -117,7 +112,7 @@ async fn verify_peer(
     is_creator: bool,
 ) -> Result<PeerConnection, ClientError> {
     let (spake, outbound_msg) = Spake2::<Ed25519Group>::start_symmetric(
-        &Password::new(peer_id),
+        &Password::new(peer_id.to_be_bytes()),
         &Identity::new(b"psend peer"),
     );
 

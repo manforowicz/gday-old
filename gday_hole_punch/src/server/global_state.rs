@@ -1,5 +1,5 @@
 use crate::{Contact, FullContact, RoomId};
-use rand::seq::SliceRandom;
+use rand::Rng;
 use thiserror::Error;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -24,24 +24,15 @@ pub struct State {
     rooms: Arc<Mutex<HashMap<RoomId, [Client; 2]>>>,
 }
 
-fn generate_room_id() -> RoomId {
-    let mut rng = rand::thread_rng();
-    let characters = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let mut id = [0; 6];
-    for letter in &mut id {
-        *letter = *characters.choose(&mut rng).unwrap();
-    }
-
-    id
-}
-
 impl State {
     pub fn create_room(&mut self) -> RoomId {
         let mut rooms = self.rooms.lock().unwrap();
 
-        let mut room_id = generate_room_id();
+
+        let mut rng = rand::thread_rng();
+        let mut room_id = rng.gen_range(0..1_048_576);
         while rooms.contains_key(&room_id) {
-            room_id = generate_room_id();
+            room_id = rng.gen_range(0..1_048_576);
         }
 
         rooms.insert(room_id, [Client::default(), Client::default()]);

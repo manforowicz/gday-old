@@ -3,21 +3,19 @@ mod peer_connector;
 
 use crate::{SerializationError, ServerMessage};
 pub use contact_sharer::ContactSharer;
-pub use peer_connector::{PeerConnector, PeerSecret, random_peer_secret};
+pub use peer_connector::{random_peer_secret, PeerConnector, PeerSecret};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ClientError {
-
     #[error("Both provided addresses were None.")]
     NoAddressProvided,
-    
+
     #[error("Received an IPv4, but expected IPv6.")]
     ExpectedIPv6,
 
     #[error("Received an IPV6, but expected an IPv4.")]
     ExpectedIPv4,
-
 
     #[error("Serialization error {0}")]
     SerializationError(#[from] SerializationError),
