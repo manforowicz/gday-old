@@ -9,7 +9,7 @@
 //! A simple test:
 //! ```
 //! use gday_hole_punch::{client, RoomId, ContactSharer};
-//! 
+//!
 //! let (sharer, room_id) = ContactSharer::create_room(server_addr)?;
 //! println!("Here's the id of my room: {room_id}");
 //! let connector = sharer.get_peer_connector()?;
@@ -24,9 +24,10 @@ use serde::{Deserialize, Serialize};
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use thiserror::Error;
 use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
+use tokio_rustls::TlsStream;
 
 #[doc(cfg(feature = "server"))]
 pub mod server;
@@ -35,7 +36,7 @@ pub mod server;
 pub mod client;
 
 /// Both peers send the server the same [`RoomId`] to get each other's contacts.
-/// 
+///
 /// 6 random ascii characters. Each character will be an uppercase letter A through Z or a digit 0 through 9.
 pub type RoomId = [u8; 6];
 
@@ -93,15 +94,15 @@ pub struct FullContact {
 }
 
 #[derive(Debug)]
-struct Messenger<T: AsyncRead + AsyncWrite + Unpin> {
-    stream: T,
+struct Messenger {
+    stream: TlsStream<TcpStream>,
     buf: Vec<u8>,
 }
 
-impl<T: AsyncRead + AsyncWrite + Unpin> Messenger<T> {
-    pub fn with_capacity(stream: T, capacity: usize) -> Self {
+impl Messenger {
+    pub fn with_capacity(stream: impl Into<TlsStream<TcpStream>>, capacity: usize) -> Self {
         Self {
-            stream,
+            stream: stream.into(),
             buf: vec![0; capacity],
         }
     }
@@ -126,22 +127,10 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Messenger<T> {
         Ok(())
     }
 
-    pub fn inner_stream(&self) -> &T {
-        &self.stream
-    }
-}
-
-impl Messenger<tokio_rustls::server::TlsStream<TcpStream>> {
-    pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
-        self.stream.get_ref().0.local_addr()
+    pub fn inner_stream(&self) -> &TcpStream {
+        self.stream.get_ref().0
     }
 
-    pub fn peer_addr(&self) -> std::io::Result<SocketAddr> {
-        self.stream.get_ref().0.peer_addr()
-    }
-}
-
-impl Messenger<tokio_rustls::client::TlsStream<TcpStream>> {
     pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
         self.stream.get_ref().0.local_addr()
     }

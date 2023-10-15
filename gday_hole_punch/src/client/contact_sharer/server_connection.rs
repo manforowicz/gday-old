@@ -1,43 +1,51 @@
-use crate::{Contact, client::ServerAddr, Messenger};
+use crate::{Contact, Messenger};
+use socket2::SockRef;
 use std::net::{
-    SocketAddr,
     SocketAddr::{V4, V6},
     SocketAddrV4, SocketAddrV6,
 };
-use std::sync::Arc;
-use tokio::net::{TcpSocket, TcpStream};
-use tokio_rustls::rustls;
-use tokio_rustls::{self, client::TlsStream, TlsConnector};
+use tokio::net::TcpStream;
 
-use super::ClientError;
-
+use super::{ClientError, Stream};
 
 pub struct ServerConnection {
-    v6: Option<MyMessenger>,
-    v4: Option<MyMessenger>,
+    v6: Option<Messenger>,
+    v4: Option<Messenger>,
 }
 
-type MyMessenger = Messenger<TlsStream<TcpStream>>;
-
 impl ServerConnection {
-    pub async fn new(server_addr: ServerAddr) -> Result<Self, ClientError> {
-        let root_cert = include_bytes!("cert_authority.der").to_vec();
-        let tls_conn = get_tls_connector(root_cert)?;
-
-        let v6 = connect(server_addr.v6, server_addr.name, &tls_conn).await;
-        let v4 = connect(server_addr.v4, server_addr.name, &tls_conn).await;
-
-        if v6.is_err() && v4.is_err() {
-            Err(v4.unwrap_err())?
-        } else {
-            Ok(Self {
-                v6: v6.ok(),
-                v4: v4.ok(),
-            })
+    pub async fn new(
+        server_addr_v6: Option<Stream>,
+        server_addr_v4: Option<Stream>,
+    ) -> Result<Self, ClientError> {
+        if server_addr_v6.is_none() && server_addr_v4.is_none() {
+            return Err(ClientError::NoAddressProvided);
         }
+
+        let mut this = Self { v6: None, v4: None };
+
+        if let Some(stream) = server_addr_v6 {
+            let tcp = stream.get_ref().0;
+            if let V4(_) = tcp.local_addr()? {
+                return Err(ClientError::ExpectedIPv4);
+            }
+            configure_stream(tcp);
+            this.v6 = Some(Messenger::with_capacity(stream, 68));
+        }
+
+        if let Some(stream) = server_addr_v4 {
+            let tcp = stream.get_ref().0;
+            if let V6(_) = tcp.local_addr()? {
+                return Err(ClientError::ExpectedIPv4);
+            }
+            configure_stream(tcp);
+            this.v4 = Some(Messenger::with_capacity(stream, 68));
+        }
+
+        Ok(this)
     }
 
-    pub(super) fn get_any_messenger(&mut self) -> &mut MyMessenger {
+    pub(super) fn get_any_messenger(&mut self) -> &mut Messenger {
         if let Some(stream) = &mut self.v6 {
             stream
         } else if let Some(stream) = &mut self.v4 {
@@ -47,9 +55,7 @@ impl ServerConnection {
         }
     }
 
-    pub(super) fn get_all_messengers(
-        &mut self,
-    ) -> std::io::Result<Vec<&mut MyMessenger>> {
+    pub(super) fn get_all_messengers(&mut self) -> std::io::Result<Vec<&mut Messenger>> {
         let mut messengers = Vec::new();
 
         if let Some(messenger) = &mut self.v6 {
@@ -64,64 +70,26 @@ impl ServerConnection {
 
     pub fn get_local_contact(&self) -> std::io::Result<Contact> {
         Ok(Contact {
-            v6: if let Some(stream) = &self.v6 {
-                Some(addr_v6_from_stream(stream)?)
-            } else {
-                None
-            },
-            v4: if let Some(stream) = &self.v4 {
-                Some(addr_v4_from_stream(stream)?)
-            } else {
-                None
-            },
+            v6: self.local_addr_v6()?,
+            v4: self.local_addr_v4()?,
         })
+    }
+
+    fn local_addr_v6(&self) -> std::io::Result<Option<SocketAddrV6>> {
+        let Some(stream) = &self.v6 else { return Ok(None)};
+        let V6(v6) = stream.local_addr()? else { unreachable!() };
+        Ok(Some(v6))
+    }
+
+    fn local_addr_v4(&self) -> std::io::Result<Option<SocketAddrV4>> {
+        let Some(stream) = &self.v4 else { return Ok(None)};
+        let V4(v4) = stream.local_addr()? else { unreachable!() };
+        Ok(Some(v4))
     }
 }
 
-fn addr_v6_from_stream(stream: &MyMessenger) -> std::io::Result<SocketAddrV6> {
-    let addr = stream.local_addr()?;
-    let V6(v6) = addr else {
-        panic!("Called unwrap_v6 on SocketAddrV4")
-    };
-    Ok(v6)
-}
-
-fn addr_v4_from_stream(stream: &MyMessenger) -> std::io::Result<SocketAddrV4> {
-    let addr = stream.local_addr()?;
-    let V4(v4) = addr else {
-        panic!("Called unwrap_v6 on SocketAddrV4")
-    };
-    Ok(v4)
-}
-
-fn get_tls_connector(cert_authority: Vec<u8>) -> Result<TlsConnector, rustls::Error> {
-    let cert = rustls::Certificate(cert_authority);
-    let mut cert_store = rustls::RootCertStore::empty();
-    cert_store.add(&cert)?;
-    let config = rustls::ClientConfig::builder()
-        .with_safe_defaults()
-        .with_root_certificates(cert_store)
-        .with_no_client_auth();
-
-    Ok(TlsConnector::from(Arc::new(config)))
-}
-
-async fn connect(
-    server_addr: impl Into<SocketAddr>,
-    server_name: &str,
-    tls_connector: &TlsConnector,
-) -> std::io::Result<MyMessenger> {
-    let server_addr = server_addr.into();
-    let socket = match server_addr {
-        V6(_) => TcpSocket::new_v6(),
-        V4(_) => TcpSocket::new_v4(),
-    }?;
-    let _ = socket.set_reuseaddr(true);
-    let _ = socket.set_reuseport(true);
-    let tcp_stream = socket.connect(server_addr).await?;
-    let tls_stream = tls_connector
-        .connect(server_name.try_into().unwrap(), tcp_stream)
-        .await?;
-
-    Ok(Messenger::with_capacity(tls_stream, 68))
+fn configure_stream(stream: &TcpStream) {
+    let sock = SockRef::from(stream);
+    let _ = sock.set_reuse_address(true);
+    let _ = sock.set_reuse_port(true);
 }

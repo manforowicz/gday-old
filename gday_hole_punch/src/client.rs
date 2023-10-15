@@ -4,17 +4,21 @@ mod peer_connector;
 use crate::{SerializationError, ServerMessage};
 pub use contact_sharer::ContactSharer;
 pub use peer_connector::{PeerConnector, PeerSecret, random_peer_secret};
-use std::net::{SocketAddrV4, SocketAddrV6};
 use thiserror::Error;
-
-pub struct ServerAddr {
-    pub v6: SocketAddrV6,
-    pub v4: SocketAddrV4,
-    pub name: &'static str,
-}
 
 #[derive(Error, Debug)]
 pub enum ClientError {
+
+    #[error("Both provided addresses were None.")]
+    NoAddressProvided,
+    
+    #[error("Received an IPv4, but expected IPv6.")]
+    ExpectedIPv6,
+
+    #[error("Received an IPV6, but expected an IPv4.")]
+    ExpectedIPv4,
+
+
     #[error("Serialization error {0}")]
     SerializationError(#[from] SerializationError),
 

@@ -1,6 +1,6 @@
 mod server_connection;
 
-use super::{peer_connector::PeerConnector, ClientError, ServerAddr};
+use super::{peer_connector::PeerConnector, ClientError};
 use crate::{ClientMessage, FullContact, Messenger, RoomId, ServerMessage};
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
@@ -13,9 +13,11 @@ pub struct ContactSharer {
     connection: ServerConnection,
 }
 
+type Stream = TlsStream<TcpStream>;
+
 impl ContactSharer {
-    pub async fn create_room(server_addr: ServerAddr) -> Result<(Self, RoomId), ClientError> {
-        let mut connection = ServerConnection::new(server_addr).await?;
+    pub async fn create_room(server_stream_v6: Option<Stream>, server_stream_v4: Option<Stream>) -> Result<(Self, RoomId), ClientError> {
+        let mut connection = ServerConnection::new(server_stream_v6, server_stream_v4).await?;
 
         let room_id = Self::request_room(connection.get_any_messenger()).await?;
 
@@ -29,8 +31,8 @@ impl ContactSharer {
         ))
     }
 
-    pub async fn join_room(server_addr: ServerAddr, room_id: RoomId) -> Result<Self, ClientError> {
-        let connection = ServerConnection::new(server_addr).await?;
+    pub async fn join_room(server_stream_v6: Option<Stream>, server_stream_v4: Option<Stream>, room_id: RoomId) -> Result<Self, ClientError> {
+        let connection = ServerConnection::new(server_stream_v6, server_stream_v4).await?;
 
         Ok(Self {
             room_id,
@@ -40,7 +42,7 @@ impl ContactSharer {
     }
 
     async fn request_room(
-        messenger: &mut Messenger<TlsStream<TcpStream>>,
+        messenger: &mut Messenger,
     ) -> Result<RoomId, ClientError> {
         messenger.write_msg(ClientMessage::CreateRoom).await?;
         //serialize_into(messenger, &ClientMessage::CreateRoom, tmp_buf).await?;

@@ -8,7 +8,7 @@ use super::ServerError;
 
 pub struct ConnectionHandler {
     state: State,
-    messenger: Messenger<TlsStream<TcpStream>>,
+    messenger: Messenger,
 }
 
 impl ConnectionHandler {
