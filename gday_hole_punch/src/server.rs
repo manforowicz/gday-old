@@ -55,6 +55,11 @@ pub async fn run(listener: TcpListener, tls_acceptor: TlsAcceptor) -> Result<(),
                 .unwrap()
                 .insert(addr.ip(), Instant::now() + Duration::from_secs(5));
 
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                blocked.lock().unwrap().remove(&addr.ip())
+            });
+
             ConnectionHandler::start(state, tls_stream).await
         });
     }
