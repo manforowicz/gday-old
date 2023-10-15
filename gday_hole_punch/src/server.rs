@@ -57,7 +57,13 @@ pub async fn run(listener: TcpListener, tls_acceptor: TlsAcceptor) -> Result<(),
 
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(5)).await;
-                blocked.lock().unwrap().remove(&addr.ip())
+                let mut blocked = blocked.lock().unwrap();
+                if let Some(&deadline) = blocked.get(&addr.ip()) {
+                    if deadline <= Instant::now() {
+                        blocked.remove(&addr.ip());
+                    }
+                }
+
             });
 
             ConnectionHandler::start(state, tls_stream).await
