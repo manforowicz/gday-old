@@ -13,3 +13,4 @@ gday-hole-punch = { version = "0.1.0", path = "../gday_hole_punch", features = [
     "client",
 ] }
 tokio = "1.32.0"
+tokio-rustls = "0.24.1"

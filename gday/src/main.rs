@@ -1,28 +1,33 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(dead_code)]
 
+mod server_connector;
+
 use clap::{Parser, Subcommand};
 use gday_chat::file_dialog;
 use gday_encryption::{EncryptedReader, EncryptedWriter};
-use gday_hole_punch::client::{random_peer_secret, ContactSharer, PeerSecret, ServerAddr};
-use std::iter::Iterator;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+use gday_hole_punch::client::{random_peer_secret, ContactSharer, PeerSecret};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4};
 use std::path::PathBuf;
 use std::process::exit;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
-
-const SERVER: ServerAddr = ServerAddr {
-    v6: SocketAddrV6::new(
-        Ipv6Addr::new(
-            0x2603, 0xc024, 0xc00c, 0xb17e, 0xfce5, 0xf16d, 0x4207, 0xb22d,
-        ),
-        49870,
-        0,
-        0,
-    ),
-    v4: SocketAddrV4::new(Ipv4Addr::new(146, 235, 206, 20), 49870),
-    name: "psend",
+use std::{iter::Iterator, net::SocketAddrV6};
+use tokio::net::{
+    tcp::{OwnedReadHalf, OwnedWriteHalf},
+    TcpStream,
 };
+use tokio_rustls::client::TlsStream;
+
+const SERVER_V6: SocketAddrV6 = SocketAddrV6::new(
+    Ipv6Addr::new(
+        0x2603, 0xc024, 0xc00c, 0xb17e, 0xfce5, 0xf16d, 0x4207, 0xb22d,
+    ),
+    49870,
+    0,
+    0,
+);
+const SERVER_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(146, 235, 206, 20), 49870);
+
+const SERVER_NAME: &str = "psend";
 
 /// TODO description here
 #[derive(Parser, Debug)]
@@ -85,11 +90,36 @@ async fn main() {
     }
 }
 
+/// (IPV6, IPV4)
+async fn connect_to_server() -> (TlsStream<TcpStream>, TlsStream<TcpStream>) {
+    let root_cert = include_bytes!("cert_authority.der").to_vec();
+    let tls_conn = server_connector::get_tls_connector(root_cert).unwrap_or_else(|err| {
+        eprintln!("{err}");
+        exit(1)
+    });
+
+    (
+        server_connector::connect(SERVER_V6, SERVER_NAME, &tls_conn)
+            .await
+            .unwrap_or_else(|err| {
+                println!("Couldn't connect to server: {err}");
+                exit(1)
+            }),
+        server_connector::connect(SERVER_V4, SERVER_NAME, &tls_conn)
+            .await
+            .unwrap_or_else(|err| {
+                println!("Couldn't connect to server: {err}");
+                exit(1)
+            }),
+    )
+}
+
 async fn start_connection() -> (
     EncryptedWriter<OwnedWriteHalf>,
     EncryptedReader<OwnedReadHalf>,
 ) {
-    let (sharer, room_id) = ContactSharer::create_room(SERVER)
+    let server_conn = connect_to_server().await;
+    let (sharer, room_id) = ContactSharer::create_room(Some(server_conn.0), Some(server_conn.1))
         .await
         .unwrap_or_else(|err| {
             eprintln!("Error connecting to server: {err}");
@@ -132,7 +162,9 @@ async fn join_connection(
     let room_id = password[0..6].try_into().unwrap();
     let peer_secret = password[6..9].try_into().unwrap();
 
-    let sharer = ContactSharer::join_room(SERVER, room_id)
+    let server_conn = connect_to_server().await;
+
+    let sharer = ContactSharer::join_room(Some(server_conn.0), Some(server_conn.1), room_id)
         .await
         .unwrap_or_else(|err| {
             eprintln!("Error joining room: {err}");

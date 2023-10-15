@@ -26,18 +26,18 @@ impl ServerConnection {
 
         if let Some(stream) = server_addr_v6 {
             let tcp = stream.get_ref().0;
-            if let V4(_) = tcp.local_addr()? {
-                return Err(ClientError::ExpectedIPv4);
-            }
+            if !matches!(tcp.local_addr()?, V6(_)) {
+                return Err(ClientError::ExpectedIPv6);
+            };
             configure_stream(tcp);
             this.v6 = Some(Messenger::with_capacity(stream, 68));
         }
 
         if let Some(stream) = server_addr_v4 {
             let tcp = stream.get_ref().0;
-            if let V6(_) = tcp.local_addr()? {
+            if !matches!(tcp.local_addr()?, V4(_)) {
                 return Err(ClientError::ExpectedIPv4);
-            }
+            };
             configure_stream(tcp);
             this.v4 = Some(Messenger::with_capacity(stream, 68));
         }
@@ -76,14 +76,22 @@ impl ServerConnection {
     }
 
     fn local_addr_v6(&self) -> std::io::Result<Option<SocketAddrV6>> {
-        let Some(stream) = &self.v6 else { return Ok(None)};
-        let V6(v6) = stream.local_addr()? else { unreachable!() };
+        let Some(stream) = &self.v6 else {
+            return Ok(None);
+        };
+        let V6(v6) = stream.local_addr()? else {
+            unreachable!()
+        };
         Ok(Some(v6))
     }
 
     fn local_addr_v4(&self) -> std::io::Result<Option<SocketAddrV4>> {
-        let Some(stream) = &self.v4 else { return Ok(None)};
-        let V4(v4) = stream.local_addr()? else { unreachable!() };
+        let Some(stream) = &self.v4 else {
+            return Ok(None);
+        };
+        let V4(v4) = stream.local_addr()? else {
+            unreachable!()
+        };
         Ok(Some(v4))
     }
 }
