@@ -30,9 +30,11 @@ use tokio::{
 use tokio_rustls::TlsStream;
 
 #[doc(cfg(feature = "server"))]
+#[cfg(feature = "server")]
 pub mod server;
 
 #[doc(cfg(feature = "client"))]
+#[cfg(feature = "client")]
 pub mod client;
 
 /// Both peers send the server the same [`RoomId`] to get each other's contacts.
