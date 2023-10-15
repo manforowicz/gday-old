@@ -20,7 +20,9 @@ impl ConnectionHandler {
 
         loop {
             if let Err(err) = Self::handle_message(&mut this).await {
+                println!("stargin sleep;");
                 tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                println!("ended sleep");
                 return Err(err);
             }
         }
@@ -88,9 +90,7 @@ impl ConnectionHandler {
     }
 
     async fn send_no_such_room(&mut self) -> Result<(), ServerError> {
-        self.messenger
-            .write_msg(ServerMessage::ErrorNoSuchRoomID)
-            .await?;
+        self.send(ServerMessage::ErrorNoSuchRoomID).await?;
         Err(ServerError::NoSuchRoomId)
     }
 }
