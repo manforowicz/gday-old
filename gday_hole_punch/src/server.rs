@@ -63,6 +63,7 @@ pub async fn run(listener: TcpListener, tls_acceptor: TlsAcceptor) -> Result<(),
         if let Some(stream_option) = is_blocked {
             *stream_option = Some(stream);
         } else {
+            println!("hi there???");
             serve_client(stream, global_data.clone());
         }
     }
