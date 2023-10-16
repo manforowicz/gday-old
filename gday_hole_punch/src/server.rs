@@ -68,7 +68,7 @@ pub async fn run(listener: TcpListener, tls_acceptor: TlsAcceptor) -> Result<(),
 }
 
 fn serve_client(tcp_stream: TcpStream, global_data: GlobalData) {
-    let addr = match tcp_stream.local_addr() {
+    let addr = match tcp_stream.peer_addr() {
         Ok(ok) => ok,
         Err(err) => {
             println!("{err}");
