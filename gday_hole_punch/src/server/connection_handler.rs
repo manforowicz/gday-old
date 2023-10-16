@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use crate::server::global_state::State;
 use crate::{ClientMessage, ServerMessage};
 use crate::{Messenger, SerializationError};
@@ -20,14 +22,18 @@ impl ConnectionHandler {
         let (room_id, is_creator) = match messenger.next_msg().await {
             Ok(ClientMessage::CreateRoom) => {
                 let room_id = state.create_room();
-                messenger.write_msg(ServerMessage::RoomCreated(room_id)).await?;
+                messenger
+                    .write_msg(ServerMessage::RoomCreated(room_id))
+                    .await?;
                 (room_id, true)
             }
             Ok(ClientMessage::JoinRoom(room_id)) => {
                 if state.room_exists(room_id) {
                     messenger.write_msg(ServerMessage::RoomJoined).await?;
                 } else {
-                    messenger.write_msg(ServerMessage::ErrorNoSuchRoomID).await?;
+                    messenger
+                        .write_msg(ServerMessage::ErrorNoSuchRoomID)
+                        .await?;
                 }
                 (room_id, false)
             }
@@ -37,7 +43,7 @@ impl ConnectionHandler {
             }
             Err(err) => {
                 messenger.write_msg(ServerMessage::SyntaxError).await?;
-                return Err(err.into()); 
+                return Err(err.into());
             }
         };
 
@@ -45,7 +51,7 @@ impl ConnectionHandler {
             state,
             messenger,
             room_id,
-            is_creator
+            is_creator,
         };
 
         loop {
@@ -58,22 +64,11 @@ impl ConnectionHandler {
 
         match msg {
             Ok(ClientMessage::SendPrivateAddr(private_addr)) => {
-                if self
-                    .state
-                    .update_client(self.room_id, self.is_creator, self.messenger.peer_addr()?, true)
-                    .is_err()
-                {
-                    self.send_no_such_room().await?;
-                }
+                self.update_client(self.messenger.peer_addr()?, true)
+                    .await?;
 
                 if let Some(addr) = private_addr {
-                    if self
-                        .state
-                        .update_client(self.room_id, self.is_creator, addr, false)
-                        .is_err()
-                    {
-                        self.send_no_such_room().await?;
-                    };
+                    self.update_client(addr, false).await?;
                 }
             }
             Ok(ClientMessage::DoneSending) => {
@@ -105,6 +100,18 @@ impl ConnectionHandler {
 
     async fn send(&mut self, msg: ServerMessage) -> Result<(), SerializationError> {
         self.messenger.write_msg(msg).await
+    }
+
+    async fn update_client(&mut self, addr: SocketAddr, public: bool) -> Result<(), ServerError> {
+        if self
+            .state
+            .update_client(self.room_id, self.is_creator, addr, public)
+            .is_err()
+        {
+            self.send_no_such_room().await
+        } else {
+            Ok(())
+        }
     }
 
     async fn send_no_such_room(&mut self) -> Result<(), ServerError> {
