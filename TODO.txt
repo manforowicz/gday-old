@@ -12,6 +12,7 @@ PENDING:
 - End program when peer quits during file transfer.
 - Server info shared in room code.
 - Improve server security against dos attack.
+- Print newline in chat after exiting with ctrl+c
 
 
 DONE:

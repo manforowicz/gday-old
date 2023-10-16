@@ -5,7 +5,7 @@ use std::{
     collections::HashMap,
     net::IpAddr,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use crate::SerializationError;
@@ -14,6 +14,7 @@ use self::global_state::State;
 use connection_handler::ConnectionHandler;
 use thiserror::Error;
 use tokio::net::TcpListener;
+use tokio::time::Instant;
 use tokio_rustls::TlsAcceptor;
 
 #[derive(Error, Debug)]
@@ -46,24 +47,20 @@ pub async fn run(listener: TcpListener, tls_acceptor: TlsAcceptor) -> Result<(),
 
             let is_blocked = blocked.lock().unwrap().get(&addr.ip()).copied();
 
-            if let Some(time) = is_blocked {
-                tokio::time::sleep(time - Instant::now()).await;
+            if let Some(unblock_time) = is_blocked {
+                tokio::time::sleep_until(unblock_time).await;
             }
 
-            blocked
-                .lock()
-                .unwrap()
-                .insert(addr.ip(), Instant::now() + Duration::from_secs(5));
-
+            let unblock_time = Instant::now() + Duration::from_secs(5);
+            blocked.lock().unwrap().insert(addr.ip(), unblock_time);
             tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                tokio::time::sleep_until(unblock_time).await;
                 let mut blocked = blocked.lock().unwrap();
                 if let Some(&deadline) = blocked.get(&addr.ip()) {
                     if deadline <= Instant::now() {
                         blocked.remove(&addr.ip());
                     }
                 }
-
             });
 
             ConnectionHandler::start(state, tls_stream).await
