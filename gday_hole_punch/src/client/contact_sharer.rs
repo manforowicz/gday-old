@@ -67,14 +67,11 @@ impl ContactSharer {
         for conn in &mut conns {
             let msg = ClientMessage::SendPrivateAddr(Some(conn.local_addr()?));
             conn.write_msg(msg).await?;
-            //serialize_into(conn.0, &msg, &mut self.tmp_buf).await?;
         }
 
         conns[0].write_msg(ClientMessage::DoneSending).await?;
-        //serialize_into(conns[0].0, &msg, &mut self.tmp_buf).await?;
 
         let response: ServerMessage = conns[0].next_msg().await?;
-        //let response: ServerMessage = deserialize_from(conns[0].0, &mut self.tmp_buf).await?;
 
         if let ServerMessage::SharePeerContacts {
             client_public: local_public,

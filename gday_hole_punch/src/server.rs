@@ -88,12 +88,12 @@ fn serve_client(tcp_stream: TcpStream, global_data: GlobalData) {
             serve_client(tcp_stream, global_data2);
         }
     });
-
+    println!("hi");
     tokio::spawn(async move {
         let tls_stream = match global_data.tls_acceptor.accept(tcp_stream).await {
             Ok(ok) => ok,
             Err(err) => {
-                println!("Tls connector error: {err}");
+                println!("TLS connector error: {err}");
                 return;
             }
         };

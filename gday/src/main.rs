@@ -60,7 +60,7 @@ async fn main() {
                 eprintln!("{err}");
                 exit(1)
             });
-            let (mut writer, mut reader) = start_connection().await;
+            let (mut writer, mut reader) = start_room().await;
             gday_chat::creator_run(&mut reader, &mut writer, Some(files))
                 .await
                 .unwrap_or_else(|err| {
@@ -70,7 +70,7 @@ async fn main() {
         }
 
         Commands::Chat => {
-            let (mut writer, mut reader) = start_connection().await;
+            let (mut writer, mut reader) = start_room().await;
             gday_chat::creator_run(&mut reader, &mut writer, None)
                 .await
                 .unwrap_or_else(|err| {
@@ -80,7 +80,7 @@ async fn main() {
         }
 
         Commands::Join { password } => {
-            let (mut writer, mut reader) = join_connection(password).await;
+            let (mut writer, mut reader) = join_room(password).await;
             gday_chat::not_creator_run(&mut reader, &mut writer)
                 .await
                 .unwrap_or_else(|err| {
@@ -109,7 +109,7 @@ async fn connect_to_server() -> (Option<TlsStream<TcpStream>>, Option<TlsStream<
     )
 }
 
-async fn start_connection() -> (
+async fn start_room() -> (
     EncryptedWriter<OwnedWriteHalf>,
     EncryptedReader<OwnedReadHalf>,
 ) {
@@ -129,7 +129,7 @@ async fn start_connection() -> (
     establish_peer_connection(sharer, peer_secret).await
 }
 
-async fn join_connection(
+async fn join_room(
     password: String,
 ) -> (
     EncryptedWriter<OwnedWriteHalf>,
