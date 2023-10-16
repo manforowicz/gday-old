@@ -1,7 +1,7 @@
 mod contact_sharer;
 mod peer_connector;
 
-use crate::{SerializationError, ServerMessage};
+use crate::SerializationError;
 pub use contact_sharer::ContactSharer;
 pub use peer_connector::{random_peer_secret, PeerConnector, PeerSecret};
 use thiserror::Error;
@@ -26,8 +26,8 @@ pub enum ClientError {
     #[error("Peer cryptographical error")]
     Cyrptographical,
 
-    #[error("Double check the first 6 characters of your password! {0:?}")]
-    InvalidServerReply(ServerMessage),
+    #[error("Double check the first 6 characters of your password!")]
+    InvalidServerReply,
 
     #[error("Couldn't connect to peer")]
     PeerConnectFailed,

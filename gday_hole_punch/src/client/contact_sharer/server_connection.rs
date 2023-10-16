@@ -4,7 +4,6 @@ use std::net::{
     SocketAddr::{V4, V6},
     SocketAddrV4, SocketAddrV6,
 };
-use tokio::net::TcpStream;
 
 use super::{ClientError, Stream};
 
@@ -28,9 +27,8 @@ impl ServerConnection {
             let tcp = stream.get_ref().0;
             if !matches!(tcp.local_addr()?, V6(_)) {
                 return Err(ClientError::ExpectedIPv6);
-            };
-            configure_stream(tcp);
-            this.v6 = Some(Messenger::with_capacity(stream, 68));
+            }; 
+            this.v6 = Some(configure_stream(stream));
         }
 
         if let Some(stream) = server_addr_v4 {
@@ -38,10 +36,8 @@ impl ServerConnection {
             if !matches!(tcp.local_addr()?, V4(_)) {
                 return Err(ClientError::ExpectedIPv4);
             };
-            configure_stream(tcp);
-            this.v4 = Some(Messenger::with_capacity(stream, 68));
+            this.v4 = Some(configure_stream(stream));
         }
-
         Ok(this)
     }
 
@@ -96,8 +92,9 @@ impl ServerConnection {
     }
 }
 
-fn configure_stream(stream: &TcpStream) {
-    let sock = SockRef::from(stream);
+fn configure_stream(stream: Stream) -> Messenger {
+    let sock = SockRef::from(stream.get_ref().0);
     let _ = sock.set_reuse_address(true);
     let _ = sock.set_reuse_port(true);
+    Messenger::with_capacity(stream, 68)
 }
