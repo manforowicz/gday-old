@@ -56,9 +56,12 @@ pub async fn run(listener: TcpListener, tls_acceptor: TlsAcceptor) -> Result<(),
                 continue;
             }
         };
-        if let Some(stream_option) = global_data.blocked.lock().unwrap().get_mut(&addr.ip()) {
+
+        let mut guard = global_data.blocked.lock().unwrap();
+        if let Some(stream_option) = guard.get_mut(&addr.ip()) {
             *stream_option = Some(stream);
         } else {
+            drop(guard);
             serve_client(stream, global_data.clone());
         }
     }
