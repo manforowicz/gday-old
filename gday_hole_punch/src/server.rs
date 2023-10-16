@@ -75,7 +75,7 @@ fn serve_client(tcp_stream: TcpStream, global_data: GlobalData) {
     .ip();
     println!("a");
     global_data.blocked.lock().unwrap().insert(addr, None);
-    println("b");
+    println!("b");
 
     let global_data2 = global_data.clone();
     tokio::spawn(async move {
