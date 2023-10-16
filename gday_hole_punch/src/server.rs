@@ -81,7 +81,9 @@ fn serve_client(tcp_stream: TcpStream, global_data: GlobalData) {
     let global_data2 = global_data.clone();
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(5)).await;
+        println!("done waiting!");
         if let Some(Some(tcp_stream)) = global_data.blocked.lock().unwrap().remove(&addr) {
+            println!("serving");
             serve_client(tcp_stream, global_data2);
         }
     });
