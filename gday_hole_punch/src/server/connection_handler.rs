@@ -81,6 +81,7 @@ impl ConnectionHandler {
                         peer,
                     })
                     .await?;
+                return Ok(());
                 } else {
                     self.send_no_such_room().await?;
                 };
@@ -91,7 +92,7 @@ impl ConnectionHandler {
             }
             Err(err) => {
                 self.send(ServerMessage::SyntaxError).await?;
-                Err(err)?;
+                return Err(err.into());
             }
         };
 

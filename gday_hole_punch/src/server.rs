@@ -76,19 +76,15 @@ fn serve_client(tcp_stream: TcpStream, global_data: GlobalData) {
         }
     }
     .ip();
-    println!("a");
     global_data.blocked.lock().unwrap().insert(addr, None);
-    println!("b");
 
     let global_data2 = global_data.clone();
     tokio::spawn(async move {
-        println!("h");
         tokio::time::sleep(Duration::from_secs(5)).await;
         if let Some(Some(tcp_stream)) = global_data.blocked.lock().unwrap().remove(&addr) {
             serve_client(tcp_stream, global_data2);
         }
     });
-    println!("e");
     tokio::spawn(async move {
         let tls_stream = match global_data.tls_acceptor.accept(tcp_stream).await {
             Ok(ok) => ok,
