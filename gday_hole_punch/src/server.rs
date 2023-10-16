@@ -82,7 +82,11 @@ fn serve_client(tcp_stream: TcpStream, global_data: GlobalData) {
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(5)).await;
         println!("done waiting!");
-        if let Some(Some(tcp_stream)) = global_data.blocked.lock().unwrap().remove(&addr) {
+        let mut guard = global_data.blocked.lock().unwrap();
+        let maybe_stream = guard.remove(&addr);
+        drop(guard);
+
+        if let Some(Some(tcp_stream)) = maybe_stream {
             println!("serving");
             serve_client(tcp_stream, global_data2);
         }
