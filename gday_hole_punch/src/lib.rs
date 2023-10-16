@@ -47,23 +47,20 @@ pub mod client;
 enum ClientMessage {
     /// Request the server to create a room
     CreateRoom,
-    /// (room_id, user is creator of room?, private contact)
-    SendContact {
-        room_id: u32,
-        is_creator: bool,
-        private_addr: Option<SocketAddr>,
-    },
+    JoinRoom(u32),
+    SendPrivateAddr(Option<SocketAddr>),
 
     /// (room_id, user is creator of room?)
-    DoneSending { room_id: u32, is_creator: bool },
+    DoneSending,
 }
 
 /// A message from [`server`] -> [`client`]
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 enum ServerMessage {
     /// Room successfully created
-    /// (room_password, user_id)
+    /// (room_id)
     RoomCreated(u32),
+    RoomJoined,
     /// (full contact info of peer)
     SharePeerContacts {
         client_public: Contact,

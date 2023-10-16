@@ -9,17 +9,47 @@ use super::ServerError;
 pub struct ConnectionHandler {
     state: State,
     messenger: Messenger,
+    room_id: u32,
+    is_creator: bool,
 }
 
 impl ConnectionHandler {
-    pub async fn start(state: State, stream: TlsStream<TcpStream>) -> Result<(), ServerError> {
-        let mut this = ConnectionHandler {
+    pub async fn start(mut state: State, stream: TlsStream<TcpStream>) -> Result<(), ServerError> {
+        let mut messenger = Messenger::with_capacity(stream, 68);
+
+        let (room_id, is_creator) = match messenger.next_msg().await {
+            Ok(ClientMessage::CreateRoom) => {
+                let room_id = state.create_room();
+                messenger.write_msg(ServerMessage::RoomCreated(room_id)).await?;
+                (room_id, true)
+            }
+            Ok(ClientMessage::JoinRoom(room_id)) => {
+                if state.room_exists(room_id) {
+                    messenger.write_msg(ServerMessage::RoomJoined).await?;
+                } else {
+                    messenger.write_msg(ServerMessage::ErrorNoSuchRoomID).await?;
+                }
+                (room_id, false)
+            }
+            Ok(_msg) => {
+                messenger.write_msg(ServerMessage::SyntaxError).await?;
+                return Err(ServerError::ReceivedIncorrectMessage);
+            }
+            Err(err) => {
+                messenger.write_msg(ServerMessage::SyntaxError).await?;
+                return Err(err.into()); 
+            }
+        };
+
+        let mut this = Self {
             state,
-            messenger: Messenger::with_capacity(stream, 68),
+            messenger,
+            room_id,
+            is_creator
         };
 
         loop {
-            Self::handle_message(&mut this).await?;
+            this.handle_message().await?;
         }
     }
 
@@ -27,18 +57,10 @@ impl ConnectionHandler {
         let msg: Result<_, _> = self.messenger.next_msg().await;
 
         match msg {
-            Ok(ClientMessage::CreateRoom) => {
-                let room_id = self.state.create_room();
-                self.send(ServerMessage::RoomCreated(room_id)).await?;
-            }
-            Ok(ClientMessage::SendContact {
-                room_id,
-                is_creator,
-                private_addr,
-            }) => {
+            Ok(ClientMessage::SendPrivateAddr(private_addr)) => {
                 if self
                     .state
-                    .update_client(room_id, is_creator, self.messenger.peer_addr()?, true)
+                    .update_client(self.room_id, self.is_creator, self.messenger.peer_addr()?, true)
                     .is_err()
                 {
                     self.send_no_such_room().await?;
@@ -47,18 +69,15 @@ impl ConnectionHandler {
                 if let Some(addr) = private_addr {
                     if self
                         .state
-                        .update_client(room_id, is_creator, addr, false)
+                        .update_client(self.room_id, self.is_creator, addr, false)
                         .is_err()
                     {
                         self.send_no_such_room().await?;
                     };
                 }
             }
-            Ok(ClientMessage::DoneSending {
-                room_id,
-                is_creator,
-            }) => {
-                if let Ok(rx) = self.state.set_client_done(room_id, is_creator) {
+            Ok(ClientMessage::DoneSending) => {
+                if let Ok(rx) = self.state.set_client_done(self.room_id, self.is_creator) {
                     let Ok((local_public, peer)) = rx.await else {
                         return Err(ServerError::RoomTimedOut);
                     };
@@ -70,6 +89,10 @@ impl ConnectionHandler {
                 } else {
                     self.send_no_such_room().await?;
                 };
+            }
+            Ok(_msg) => {
+                self.send(ServerMessage::SyntaxError).await?;
+                return Err(ServerError::ReceivedIncorrectMessage);
             }
             Err(err) => {
                 self.send(ServerMessage::SyntaxError).await?;

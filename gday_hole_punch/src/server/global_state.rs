@@ -39,6 +39,10 @@ impl State {
         room_id
     }
 
+    pub fn room_exists(&self, room_id: u32) -> bool {
+        self.rooms.lock().unwrap().contains_key(&room_id)
+    }
+
     pub fn update_client(
         &mut self,
         room_id: u32,

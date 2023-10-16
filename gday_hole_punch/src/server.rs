@@ -13,8 +13,7 @@ use crate::SerializationError;
 use self::global_state::State;
 use connection_handler::ConnectionHandler;
 use thiserror::Error;
-use tokio::net::TcpListener;
-use tokio::time::Instant;
+use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
 
 #[derive(Error, Debug)]
@@ -30,40 +29,76 @@ pub enum ServerError {
 
     #[error("No such room id exists")]
     NoSuchRoomId,
+
+    #[error("No such room id exists")]
+    ReceivedIncorrectMessage,
+
+}
+
+#[derive(Clone)]
+struct GlobalData {
+    state: State,
+    blocked: Arc<Mutex<HashMap<IpAddr, Option<TcpStream>>>>,
+    tls_acceptor: TlsAcceptor,
 }
 
 pub async fn run(listener: TcpListener, tls_acceptor: TlsAcceptor) -> Result<(), ServerError> {
-    let state = State::default();
-
-    let blocked: Arc<Mutex<HashMap<IpAddr, Instant>>> = Arc::new(Mutex::new(HashMap::new()));
+    let global_data = GlobalData {
+        state: State::default(),
+        blocked: Arc::new(Mutex::new(HashMap::new())),
+        tls_acceptor,
+    };
 
     loop {
-        let (stream, addr) = listener.accept().await.unwrap();
-        let tls_acceptor = tls_acceptor.clone();
-        let state = state.clone();
-        let blocked = blocked.clone();
-        tokio::spawn(async move {
-            let tls_stream = tls_acceptor.accept(stream).await?;
-
-            let is_blocked = blocked.lock().unwrap().get(&addr.ip()).copied();
-
-            if let Some(unblock_time) = is_blocked {
-                tokio::time::sleep_until(unblock_time).await;
+        let (stream, addr) = match listener.accept().await {
+            Ok(ok) => ok,
+            Err(err) => {
+                println!("Error accepting connection: {err}");
+                continue;
             }
+        };
 
-            let unblock_time = Instant::now() + Duration::from_secs(5);
-            blocked.lock().unwrap().insert(addr.ip(), unblock_time);
-            tokio::spawn(async move {
-                tokio::time::sleep_until(unblock_time).await;
-                let mut blocked = blocked.lock().unwrap();
-                if let Some(&deadline) = blocked.get(&addr.ip()) {
-                    if deadline <= Instant::now() {
-                        blocked.remove(&addr.ip());
-                    }
-                }
-            });
-
-            ConnectionHandler::start(state, tls_stream).await
-        });
+        let mut data = global_data.blocked.lock().unwrap();
+        let is_blocked = data.get_mut(&addr.ip());
+        if let Some(stream_option) = is_blocked {
+            *stream_option = Some(stream);
+        } else {
+            serve_client(stream, global_data.clone());
+        }
     }
+}
+
+fn serve_client(tcp_stream: TcpStream, global_data: GlobalData) {
+    let addr = match tcp_stream.local_addr() {
+        Ok(ok) => ok,
+        Err(err) => {
+            println!("{err}");
+            return;
+        }
+    }
+    .ip();
+
+    global_data.blocked.lock().unwrap().insert(addr, None);
+
+    let global_data2 = global_data.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        let mut blocked = global_data.blocked.lock().unwrap();
+        if let Some(Some(tcp_stream)) = blocked.remove(&addr) {
+            serve_client(tcp_stream, global_data2);
+        }
+    });
+
+    tokio::spawn(async move {
+        let tls_stream = match global_data.tls_acceptor.accept(tcp_stream).await {
+            Ok(ok) => ok,
+            Err(err) => {
+                println!("Tls connector error: {err}");
+                return;
+            }
+        };
+        if let Err(err) = ConnectionHandler::start(global_data.state, tls_stream).await {
+            println!("{err}")
+        }
+    });
 }
