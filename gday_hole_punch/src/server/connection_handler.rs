@@ -34,6 +34,7 @@ impl ConnectionHandler {
                     messenger
                         .write_msg(ServerMessage::ErrorNoSuchRoomID)
                         .await?;
+                    return Err(ServerError::NoSuchRoomId);
                 }
                 (room_id, false)
             }
@@ -81,7 +82,7 @@ impl ConnectionHandler {
                         peer,
                     })
                     .await?;
-                return Ok(());
+                    return Ok(());
                 } else {
                     self.send_no_such_room().await?;
                 };
