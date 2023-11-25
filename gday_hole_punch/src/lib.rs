@@ -58,13 +58,12 @@ enum ClientMessage {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 enum ServerMessage {
     /// Room successfully created
-    /// (room_id)
-    RoomCreated(u32),
+    RoomCreated{ room_id: u32 },
     RoomJoined,
     /// (full contact info of peer)
     SharePeerContacts {
-        client_public: Contact,
-        peer: FullContact,
+        client_contact: FullContact,
+        peer_contact: FullContact,
     },
     SyntaxError,
     ErrorNoSuchRoomID,

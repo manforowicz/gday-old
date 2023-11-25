@@ -1,7 +1,7 @@
 mod server_connection;
 
 use super::{peer_connector::PeerConnector, ClientError};
-use crate::{ClientMessage, FullContact, ServerMessage};
+use crate::{ClientMessage, ServerMessage};
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 
@@ -25,7 +25,7 @@ impl ContactSharer {
         messenger.write_msg(ClientMessage::CreateRoom).await?;
         let response = messenger.next_msg().await?;
 
-        if let ServerMessage::RoomCreated(room_id) = response {
+        if let ServerMessage::RoomCreated { room_id } = response {
             Ok((
                 Self {
                     is_creator: true,
@@ -74,15 +74,12 @@ impl ContactSharer {
         let response: ServerMessage = conns[0].next_msg().await?;
 
         if let ServerMessage::SharePeerContacts {
-            client_public: local_public,
-            peer,
+            client_contact: local,
+            peer_contact: peer,
         } = response
         {
             Ok(PeerConnector {
-                local: FullContact {
-                    private: self.connection.get_local_contact()?,
-                    public: local_public,
-                },
+                local,
                 peer,
                 is_creator: self.is_creator,
             })

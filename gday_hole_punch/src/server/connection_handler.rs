@@ -23,7 +23,7 @@ impl ConnectionHandler {
             Ok(ClientMessage::CreateRoom) => {
                 let room_id = state.create_room();
                 messenger
-                    .write_msg(ServerMessage::RoomCreated(room_id))
+                    .write_msg(ServerMessage::RoomCreated { room_id })
                     .await?;
                 (room_id, true)
             }
@@ -74,12 +74,12 @@ impl ConnectionHandler {
             }
             Ok(ClientMessage::DoneSending) => {
                 if let Ok(rx) = self.state.set_client_done(self.room_id, self.is_creator) {
-                    let Ok((local_public, peer)) = rx.await else {
+                    let Ok((client_contact, peer_contact)) = rx.await else {
                         return Err(ServerError::RoomTimedOut);
                     };
                     self.send(ServerMessage::SharePeerContacts {
-                        client_public: local_public,
-                        peer,
+                        client_contact,
+                        peer_contact,
                     })
                     .await?;
                     return Ok(());
