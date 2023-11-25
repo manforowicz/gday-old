@@ -1,3 +1,3 @@
 # Gday
 
-Work in progress.
+I'm leaving this, to restructure the whole project.
